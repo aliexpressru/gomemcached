@@ -2,7 +2,7 @@
 
 ---
 <div align=center>
-<img src="https://github.com/aliexpressru/gomemcached/assets/logo.png" width="300"/>
+<img src="https://github.com/aliexpressru/gomemcached/raw/main/assets/logo.png" width="300"/>
 
 [![License](https://img.shields.io/github/license/gogf/gf.svg?style=flat)](https://github.com/aliexpressru/gomemcached)
 </div>
