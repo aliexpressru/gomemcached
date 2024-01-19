@@ -1,0 +1,35 @@
+# More info on config here: https://github.com/golangci/golangci-lint#config-file
+run:
+  deadline: 60s
+  issues-exit-code: 1
+  tests: true
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters-settings:
+  govet:
+    check-shadowing: true
+  golint:
+    min-confidence: 0
+  dupl:
+    threshold: 100
+  goconst:
+    min-len: 2
+    min-occurrences: 2
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - gosimple
+    - errcheck
+    - ineffassign
+    - typecheck
+    - goconst
+    - gosec
+    - nilnil
+    - goimports
+    - megacheck
