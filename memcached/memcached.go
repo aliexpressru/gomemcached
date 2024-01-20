@@ -142,7 +142,7 @@ func InitFromEnv(opts ...Option) (*Client, error) {
 		cfg = new(config)
 	)
 	if err := envconfig.Process("", cfg); err != nil {
-		return nil, fmt.Errorf("gomemcached: client init err: %s", err.Error())
+		return nil, fmt.Errorf("%s: client init err: %s", libPrefix, err.Error())
 	}
 
 	op.cfg = cfg

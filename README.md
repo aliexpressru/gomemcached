@@ -49,6 +49,8 @@ Initialization client and connected to memcached servers.
         return nil
     })
 ```
+[More examples](examples/main.go)
+
 To use SASL specify option for InitFromEnv:
 
 ```go

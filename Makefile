@@ -4,7 +4,7 @@ GOENV=PATH=$(LOCAL_BIN):$(PATH)
 
 GOLANGCI_BIN=$(LOCAL_BIN)/golangci-lint
 $(GOLANGCI_BIN):
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(LOCAL_BIN) v1.54.1
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(LOCAL_BIN) v1.55.2
 
 .PHONY: lint
 lint: $(GOLANGCI_BIN)
