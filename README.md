@@ -8,7 +8,7 @@
 
 [![Gomemcached](https://goreportcard.com/badge/github.com/aliexpressru/gomemcached)](https://goreportcard.com/report/github.com/aliexpressru/gomemcached)
 [![Godoc](https://godoc.org/github.com/aliexpressru/gomemcached?status.svg)](https://pkg.go.dev/github.com/aliexpressru/gomemcached)
-![Coverage](https://img.shields.io/badge/Coverage-34.4%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-69.0%25-yellow)
 </div>
 
 ___
