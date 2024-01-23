@@ -374,7 +374,7 @@ func testWithClient(t *testing.T, c *Client) {
 	assert.Nilf(t, err, "Replace have error - %v", err)
 	resp, err = c.Get("baz")
 	assert.Nilf(t, err, "Get for Replace have error - %v", err)
-	assert.Equalf(t, "42", string(resp.Body), "Resp after replase want - 42, have - %s", string(resp.Body))
+	assert.Equalf(t, "42", string(resp.Body), "Resp after replaces want - 42, have - %s", string(resp.Body))
 
 	// Incr/Decr
 	_, err = c.Store(Set, "num", 0, []byte("42"))
@@ -424,9 +424,9 @@ func testWithClient(t *testing.T, c *Client) {
 	checkKeyOnExist := func(method string, input map[string][]byte, output map[string][]byte) {
 		for key, reqBody := range input {
 			if respBody, ok := output[key]; ok {
-				assert.Equalf(t, reqBody, respBody, "%s. Request and responce body not equal, have - %v, want - %v", method, respBody, reqBody)
+				assert.Equalf(t, reqBody, respBody, "%s. Request and response body not equal, have - %v, want - %v", method, respBody, reqBody)
 			} else {
-				t.Errorf("%s. Don't found requset key %v in responce", method, key)
+				t.Errorf("%s. Don't found requset key %v in response", method, key)
 			}
 		}
 	}
