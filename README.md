@@ -68,7 +68,7 @@ to use the default client implementation.
 
 This project is developed and tested with the following recommended versions:
 
-- Go: 1.18 or higher
+- Go: 1.21 or higher
    - [Download Go](https://golang.org/dl/)
 
 - Memcached: 1.6.9 or higher
