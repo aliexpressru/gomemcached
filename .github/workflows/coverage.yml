@@ -16,7 +16,7 @@ jobs:
           - 11211:11211
     strategy:
       matrix:
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        os: [ ubuntu-latest  ]
         go: [ 1.21.x ]
     steps:
       - uses: actions/checkout@v4

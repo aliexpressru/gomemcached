@@ -498,14 +498,14 @@ func testExpireWithClient(t *testing.T, c *Client) {
 		return
 	}
 
-	const secondsToExpiry = uint32(2)
+	const secondsToExpiry = uint32(1)
 
 	_, err := c.Store(Set, "foo", secondsToExpiry, []byte("fooval"))
 	assert.Nilf(t, err, "Store(Set) with expire have error - %v", err)
 	_, err = c.Store(Add, "bar", secondsToExpiry, []byte("barval"))
 	assert.Nilf(t, err, "Store(Add) with expire have error - %v", err)
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(time.Second)
 
 	_, err = c.Get("foo")
 	assert.ErrorIsf(t, err, ErrCacheMiss, "Get for expire item - %v", err)
@@ -638,7 +638,7 @@ func TestConn(t *testing.T) {
 
 	// c.SetDeadline(time.Now().Add(time.Second))
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(time.Second)
 
 	n, err := transmitRequest(c, &req)
 	if err != nil {
