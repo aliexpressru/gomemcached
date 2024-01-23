@@ -118,11 +118,7 @@ func (p *Pool) Put(v any) {
 	}
 	select {
 	case p.store <- v:
-		return
 	default:
-		// pool is full, close passed connection
-		p.close(v)
-		return
 	}
 }
 

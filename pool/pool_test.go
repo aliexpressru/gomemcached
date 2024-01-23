@@ -76,7 +76,7 @@ func TestPoolConcurrency(t *testing.T) {
 			defer wg.Done()
 			conn, err := p.Get()
 			assert.Nilf(t, err, "Get have error %v", err)
-			time.Sleep(5 * time.Millisecond)
+			<-time.After(5 * time.Millisecond)
 			p.Put(conn)
 		}()
 	}
@@ -126,6 +126,9 @@ func TestCountConns(t *testing.T) {
 		p.Put(testConnection{})
 	}
 
+	// p.store is full, over-conn
+	p.Put(testConnection{})
+
 	wg1.Add(2)
 
 	go func() {
@@ -138,8 +141,9 @@ func TestCountConns(t *testing.T) {
 	}()
 	wg1.Wait()
 
-	_, closed := <-p.storeClose
-	assert.Falsef(t, closed, "Wrong storeClose flag. have - %t, expacted - %t ", closed, false)
+	cn, err := p.Get()
+	assert.Nil(t, cn, "Get: after method Destroy, pool is closed and should return cn == nil")
+	assert.ErrorIs(t, err, ErrClosedPool, "Get: after method Destroy, pool is closed, want error ErrClosedPool")
 
 	p2 := New(context.Background(), count, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 
@@ -199,7 +203,7 @@ func TestCountConns(t *testing.T) {
 	wg2.Add(1)
 	go func() {
 		defer wg2.Done()
-		time.Sleep(200 * time.Millisecond)
+		<-time.After(200 * time.Millisecond)
 		c, gErr := p2.Get()
 		assert.Nilf(t, gErr, "Get with full cap have error")
 		addToSl(c)
@@ -212,4 +216,21 @@ func TestCountConns(t *testing.T) {
 			p2.Put(getFromSl())
 		}()
 	}
+
+	p3 := New(context.Background(), 1, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+
+	// maxConns is full
+	p3.Get()
+
+	cn, err = p3.Get()
+	assert.Nil(t, cn, "Get: after a timeout, it should return cn == nil")
+	assert.ErrorIsf(t, ErrAcquireTimeout, err, "Get: after a timeout, it should return ErrAcquireTimeout")
+
+	_, ok := p3.Pop()
+	assert.False(t, ok, "Pop: pool with empty pool it should return false for second arg")
+
+	p3.Destroy()
+	cn, ok = p3.Pop()
+	assert.Nil(t, cn, "Pop: after method Destroy, pool is closed and should return cn == nil")
+	assert.False(t, ok, "Pop: after method Destroy, pool is closed and should return false for second arg")
 }

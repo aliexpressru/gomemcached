@@ -309,8 +309,11 @@ func TestLocalhost(t *testing.T) {
 }
 
 func testWithClient(t *testing.T, c *Client) {
+	_, err := c.Store(Set, invalidKey, 0, []byte("foo"))
+	assert.ErrorIsf(t, err, ErrMalformedKey, "Store: invalid key, want error ErrMalformedKey")
+
 	// Set
-	_, err := c.Store(Set, "foo", 0, []byte("fooval-fromset1"))
+	_, err = c.Store(Set, "foo", 0, []byte("fooval-fromset1"))
 	assert.Nilf(t, err, "first set(foo): %v", err)
 	_, err = c.Store(Set, "foo", 0, []byte("fooval-fromset2"))
 	assert.Nilf(t, err, "second set(foo): %v", err)
@@ -430,6 +433,9 @@ func testWithClient(t *testing.T, c *Client) {
 			}
 		}
 	}
+
+	_, err = c.MultiGet(append(keys, invalidKey))
+	assert.ErrorIsf(t, err, ErrMalformedKey, "MultiGet: invalid key, want error ErrMalformedKey")
 
 	addKeys()
 	output, err := c.MultiGet(keys)
@@ -636,30 +642,20 @@ func TestConn(t *testing.T) {
 		Opcode: VERSION,
 	}
 
-	// c.SetDeadline(time.Now().Add(time.Second))
-
-	time.Sleep(time.Second)
-
 	n, err := transmitRequest(c, &req)
 	if err != nil {
 		t.Errorf("Expected errNoConn with no conn, got %v", err)
-	} else {
-		fmt.Printf("write bytes - %d\n", n)
 	}
-
-	// err = c.Close()
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
 
 	buf := make([]byte, HDR_LEN)
 	resp, _, err := getResponse(c, buf)
 	if err != nil {
 		t.Fatalf("Error transmitting request: %v", err)
-	} else {
-		fmt.Printf("read bytes - %d\n", len(buf))
 	}
 
+	if n != len(buf) {
+		t.Errorf("write bytes - %d != read bytes - %d\n", n, len(buf))
+	}
 	if resp.Status != SUCCESS {
 		t.Errorf("Expected SUCCESS, got %v", resp.Status)
 	}
@@ -667,3 +663,5 @@ func TestConn(t *testing.T) {
 		t.Fatalf("Error with close connection: %v", err)
 	}
 }
+
+const invalidKey = `Loremipsumdolorsitamet,consecteturadipiscingelit.Velelitvoluptateeleifendquisproidentnonfeugaitiriureliberminimveniamillumcupiditataliquid,nihiltefeugiatlobortiseleifendnibhproidenttationatoptionesseconsectetuerdeserunt.Gubergrenveroidsolutaquis.Dignissimlobortisloremveroenimrebumconsetetur.`
