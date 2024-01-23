@@ -19,8 +19,6 @@ jobs:
 
       - name: Set up Go
         uses: actions/setup-go@v2
-        run: |
-          go mod download
         with:
           go-version: ${{ matrix.go }}
 
