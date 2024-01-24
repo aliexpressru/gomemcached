@@ -364,3 +364,90 @@ func BenchmarkReceiveRequestNoBuf(b *testing.B) {
 		}
 	}
 }
+
+func TestRequest_prepareExtras(t *testing.T) {
+	type fields struct {
+		Opcode OpCode
+	}
+	type args struct {
+		expiration uint32
+		delta      uint64
+		initVal    uint64
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		expect []byte
+	}{
+		{
+			name: "GET must not have extras",
+			fields: fields{
+				Opcode: GET,
+			},
+			args: args{
+				expiration: 256,
+				delta:      1,
+				initVal:    1,
+			},
+			expect: nil,
+		},
+		{
+			name: "SET",
+			fields: fields{
+				Opcode: SET,
+			},
+			args: args{
+				expiration: 256,
+				delta:      1,
+				initVal:    1,
+			},
+			expect: []byte{
+				0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x01, 0x00,
+			},
+		},
+		{
+			name: "INCREMENT",
+			fields: fields{
+				Opcode: INCREMENT,
+			},
+			args: args{
+				expiration: 256,
+				delta:      1,
+				initVal:    42,
+			},
+			expect: []byte{
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a,
+				0x00, 0x00, 0x01, 0x00,
+			},
+		},
+		{
+			name: "FLUSH",
+			fields: fields{
+				Opcode: FLUSH,
+			},
+			args: args{
+				expiration: 256,
+				delta:      0,
+				initVal:    0,
+			},
+			expect: []byte{
+				0x00, 0x00, 0x01, 0x00,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Request{
+				Opcode: tt.fields.Opcode,
+			}
+			r.prepareExtras(tt.args.expiration, tt.args.delta, tt.args.initVal)
+
+			if !bytes.Equal(r.Extras, tt.expect) {
+				t.Fatalf("Expected %#v == %#v", r.Extras, tt.expect)
+			}
+		})
+	}
+}

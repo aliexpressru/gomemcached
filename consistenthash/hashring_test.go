@@ -30,13 +30,16 @@ func BenchmarkHashRingGet(b *testing.B) {
 func TestHashRing_GetAllNodes(t *testing.T) {
 	ch := NewHashRing()
 
+	allNodes := ch.GetAllNodes()
+	assert.Nil(t, allNodes, "GetAllNodes: without added nodes")
+
 	for i := 0; i < keySize; i++ {
 		ch.Add("localhost:" + strconv.Itoa(i))
 	}
 	count := ch.GetNodesCount()
 	assert.Equalf(t, keySize, count, "GetNodesCount: have - %d; want - %d", count, keySize)
 
-	allNodes := ch.GetAllNodes()
+	allNodes = ch.GetAllNodes()
 	assert.Equal(t, keySize, len(allNodes))
 
 	for i := 0; i < keySize; i++ {

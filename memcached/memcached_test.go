@@ -309,8 +309,11 @@ func TestLocalhost(t *testing.T) {
 }
 
 func testWithClient(t *testing.T, c *Client) {
+	_, err := c.Store(Set, invalidKey, 0, []byte("foo"))
+	assert.ErrorIsf(t, err, ErrMalformedKey, "Store: invalid key, want error ErrMalformedKey")
+
 	// Set
-	_, err := c.Store(Set, "foo", 0, []byte("fooval-fromset1"))
+	_, err = c.Store(Set, "foo", 0, []byte("fooval-fromset1"))
 	assert.Nilf(t, err, "first set(foo): %v", err)
 	_, err = c.Store(Set, "foo", 0, []byte("fooval-fromset2"))
 	assert.Nilf(t, err, "second set(foo): %v", err)
@@ -374,7 +377,7 @@ func testWithClient(t *testing.T, c *Client) {
 	assert.Nilf(t, err, "Replace have error - %v", err)
 	resp, err = c.Get("baz")
 	assert.Nilf(t, err, "Get for Replace have error - %v", err)
-	assert.Equalf(t, "42", string(resp.Body), "Resp after replase want - 42, have - %s", string(resp.Body))
+	assert.Equalf(t, "42", string(resp.Body), "Resp after replaces want - 42, have - %s", string(resp.Body))
 
 	// Incr/Decr
 	_, err = c.Store(Set, "num", 0, []byte("42"))
@@ -424,12 +427,15 @@ func testWithClient(t *testing.T, c *Client) {
 	checkKeyOnExist := func(method string, input map[string][]byte, output map[string][]byte) {
 		for key, reqBody := range input {
 			if respBody, ok := output[key]; ok {
-				assert.Equalf(t, reqBody, respBody, "%s. Request and responce body not equal, have - %v, want - %v", method, respBody, reqBody)
+				assert.Equalf(t, reqBody, respBody, "%s. Request and response body not equal, have - %v, want - %v", method, respBody, reqBody)
 			} else {
-				t.Errorf("%s. Don't found requset key %v in responce", method, key)
+				t.Errorf("%s. Don't found requset key %v in response", method, key)
 			}
 		}
 	}
+
+	_, err = c.MultiGet(append(keys, invalidKey))
+	assert.ErrorIsf(t, err, ErrMalformedKey, "MultiGet: invalid key, want error ErrMalformedKey")
 
 	addKeys()
 	output, err := c.MultiGet(keys)
@@ -498,14 +504,14 @@ func testExpireWithClient(t *testing.T, c *Client) {
 		return
 	}
 
-	const secondsToExpiry = uint32(2)
+	const secondsToExpiry = uint32(1)
 
 	_, err := c.Store(Set, "foo", secondsToExpiry, []byte("fooval"))
 	assert.Nilf(t, err, "Store(Set) with expire have error - %v", err)
 	_, err = c.Store(Add, "bar", secondsToExpiry, []byte("barval"))
 	assert.Nilf(t, err, "Store(Add) with expire have error - %v", err)
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(time.Second)
 
 	_, err = c.Get("foo")
 	assert.ErrorIsf(t, err, ErrCacheMiss, "Get for expire item - %v", err)
@@ -636,30 +642,20 @@ func TestConn(t *testing.T) {
 		Opcode: VERSION,
 	}
 
-	// c.SetDeadline(time.Now().Add(time.Second))
-
-	time.Sleep(2 * time.Second)
-
 	n, err := transmitRequest(c, &req)
 	if err != nil {
 		t.Errorf("Expected errNoConn with no conn, got %v", err)
-	} else {
-		fmt.Printf("write bytes - %d\n", n)
 	}
-
-	// err = c.Close()
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
 
 	buf := make([]byte, HDR_LEN)
 	resp, _, err := getResponse(c, buf)
 	if err != nil {
 		t.Fatalf("Error transmitting request: %v", err)
-	} else {
-		fmt.Printf("read bytes - %d\n", len(buf))
 	}
 
+	if n != len(buf) {
+		t.Errorf("write bytes - %d != read bytes - %d\n", n, len(buf))
+	}
 	if resp.Status != SUCCESS {
 		t.Errorf("Expected SUCCESS, got %v", resp.Status)
 	}
@@ -667,3 +663,5 @@ func TestConn(t *testing.T) {
 		t.Fatalf("Error with close connection: %v", err)
 	}
 }
+
+const invalidKey = `Loremipsumdolorsitamet,consecteturadipiscingelit.Velelitvoluptateeleifendquisproidentnonfeugaitiriureliberminimveniamillumcupiditataliquid,nihiltefeugiatlobortiseleifendnibhproidenttationatoptionesseconsectetuerdeserunt.Gubergrenveroidsolutaquis.Dignissimlobortisloremveroenimrebumconsetetur.`

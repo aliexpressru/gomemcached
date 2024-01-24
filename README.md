@@ -5,6 +5,10 @@
 <img src="https://github.com/aliexpressru/gomemcached/raw/main/assets/logo.png" width="300"/>
 
 [![License](https://img.shields.io/github/license/gogf/gf.svg?style=flat)](https://github.com/aliexpressru/gomemcached)
+
+[![Gomemcached](https://goreportcard.com/badge/github.com/aliexpressru/gomemcached)](https://goreportcard.com/report/github.com/aliexpressru/gomemcached)
+[![Godoc](https://godoc.org/github.com/aliexpressru/gomemcached?status.svg)](https://pkg.go.dev/github.com/aliexpressru/gomemcached)
+![Coverage](https://img.shields.io/badge/Coverage-69.8%25-yellow)
 </div>
 
 ___
@@ -66,7 +70,7 @@ to use the default client implementation.
 
 This project is developed and tested with the following recommended versions:
 
-- Go: 1.18 or higher
+- Go: 1.21 or higher
    - [Download Go](https://golang.org/dl/)
 
 - Memcached: 1.6.9 or higher
