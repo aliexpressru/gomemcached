@@ -28,7 +28,7 @@ jobs:
 
       - name: Test
         run: |
-          go test -v -cover ./... -coverprofile coverage.out -coverpkg ./...
+          go test -v -cover ./... -coverprofile coverage.out
           go tool cover -func coverage.out -o coverage.out 
 
       - name: Go Coverage Badge
