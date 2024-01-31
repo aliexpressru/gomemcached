@@ -220,7 +220,7 @@ func TestCountConns(t *testing.T) {
 	p3 := New(context.Background(), 1, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 
 	// maxConns is full
-	p3.Get()
+	_, _ = p3.Get()
 
 	cn, err = p3.Get()
 	assert.Nil(t, cn, "Get: after a timeout, it should return cn == nil")

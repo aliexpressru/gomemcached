@@ -3,12 +3,12 @@ package memcached
 import (
 	"errors"
 	"net"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 
 	"github.com/aliexpressru/gomemcached/logger"
 	"github.com/aliexpressru/gomemcached/utils"
@@ -89,9 +89,7 @@ func (c *Client) checkNodesHealth() {
 
 	ringNodes := c.hr.GetAllNodes()
 	for node := range deadNodes {
-		slices.DeleteFunc(ringNodes, func(a any) bool {
-			return utils.Repr(a) == node
-		})
+		ringNodes = slices.DeleteFunc(ringNodes, func(a any) bool { return utils.Repr(a) == node })
 	}
 
 	for _, node := range ringNodes {
@@ -133,9 +131,7 @@ func (c *Client) rebuildNodes() {
 
 	deadNodes := c.safeGetDeadNodes()
 	for node := range deadNodes {
-		slices.DeleteFunc(currentNodes, func(a string) bool {
-			return a == node
-		})
+		currentNodes = slices.DeleteFunc(currentNodes, func(a string) bool { return a == node })
 	}
 
 	var nodesInRing []string
