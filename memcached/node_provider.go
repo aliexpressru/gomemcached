@@ -74,11 +74,8 @@ func (c *Client) checkNodesHealth() {
 		}
 	}
 
-	var (
-		wg        = sync.WaitGroup{}
-		deadNodes = c.safeGetDeadNodes()
-	)
-	for node := range deadNodes {
+	wg := sync.WaitGroup{}
+	for node := range c.safeGetDeadNodes() {
 		wg.Add(1)
 		go func(n string) {
 			recheckDeadNodes(n)
@@ -88,7 +85,7 @@ func (c *Client) checkNodesHealth() {
 	wg.Wait()
 
 	ringNodes := c.hr.GetAllNodes()
-	for node := range deadNodes {
+	for node := range c.safeGetDeadNodes() {
 		ringNodes = slices.DeleteFunc(ringNodes, func(a any) bool { return utils.Repr(a) == node })
 	}
 
@@ -105,6 +102,7 @@ func (c *Client) checkNodesHealth() {
 
 	wg.Wait()
 
+	deadNodes := c.safeGetDeadNodes()
 	if len(deadNodes) != 0 {
 		nodes := maps.Keys(deadNodes)
 
