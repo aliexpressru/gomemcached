@@ -67,6 +67,7 @@ type (
 	// It is safe for unlocked use by multiple concurrent goroutines.
 	Client struct {
 		ctx context.Context
+		nw  *network
 		cfg *config
 
 		// opaque - a unique identifier for the request, used to associate the request with its corresponding response.
@@ -114,6 +115,12 @@ type (
 		authData []byte
 	}
 
+	network struct {
+		dial        func(network string, address string) (net.Conn, error)
+		dialTimeout func(network string, address string, timeout time.Duration) (net.Conn, error)
+		lookupHost  func(host string) (addrs []string, err error)
+	}
+
 	config struct {
 		// HeadlessServiceAddress Headless service to lookup all the memcached ip addresses.
 		HeadlessServiceAddress string `envconfig:"MEMCACHED_HEADLESS_SERVICE_ADDRESS"`
@@ -151,6 +158,13 @@ func InitFromEnv(opts ...Option) (*Client, error) {
 		opt(op)
 	}
 
+	if op.Client.nw == nil {
+		op.Client.nw = &network{
+			dial:        net.Dial,
+			dialTimeout: net.DialTimeout,
+			lookupHost:  net.LookupHost,
+		}
+	}
 	if op.Client.hr == nil {
 		op.Client.hr = consistenthash.NewHashRing()
 	}
@@ -181,6 +195,11 @@ func newForTests(servers ...string) (*Client, error) {
 		opaque:                     new(uint32),
 		hr:                         hr,
 		disableMemcachedDiagnostic: true,
+		nw: &network{
+			dial:        net.Dial,
+			dialTimeout: net.DialTimeout,
+			lookupHost:  net.LookupHost,
+		},
 	}
 
 	return cm, nil
@@ -190,7 +209,7 @@ func newFromConfig(op *options) (*Client, error) {
 	if op.cfg != nil && !(op.cfg.HeadlessServiceAddress != "" || len(op.cfg.Servers) != 0) {
 		return nil, fmt.Errorf("%w, you must fill in either MEMCACHED_HEADLESS_SERVICE_ADDRESS or MEMCACHED_SERVERS", ErrNotConfigured)
 	}
-	nodes, err := getNodes(op.cfg)
+	nodes, err := getNodes(op.nw.lookupHost, op.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("%w, %s", ErrInvalidAddr, err.Error())
 	}
@@ -208,7 +227,6 @@ func newFromConfig(op *options) (*Client, error) {
 	if !mc.disableNodeProvider {
 		mc.initNodesProvider()
 	}
-
 	return mc, nil
 }
 
@@ -379,7 +397,7 @@ func (cte *ConnectTimeoutError) Error() string {
 
 func (c *Client) dial(addr net.Addr) (net.Conn, error) {
 	if c.netTimeout() > 0 {
-		nc, err := net.DialTimeout(addr.Network(), addr.String(), c.netTimeout())
+		nc, err := c.nw.dialTimeout(addr.Network(), addr.String(), c.netTimeout())
 		if err != nil {
 			var ne net.Error
 			if errors.As(err, &ne) && ne.Timeout() {
@@ -389,7 +407,7 @@ func (c *Client) dial(addr net.Addr) (net.Conn, error) {
 		}
 		return nc, nil
 	}
-	return net.Dial(addr.Network(), addr.String())
+	return c.nw.dial(addr.Network(), addr.String())
 }
 
 func (c *Client) getConnForNode(node any) (*conn, error) {

@@ -8,9 +8,15 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/aliexpressru/gomemcached/consistenthash"
+	"github.com/aliexpressru/gomemcached/logger"
 )
 
 func TestWithOptions(t *testing.T) {
+	os.Setenv("MEMCACHED_SERVERS", "localhost:11211")
+
+	hMcl, _ := InitFromEnv()
+	assert.NotNil(t, hMcl.hr, "InitFromEnv: hash ring is nil")
+
 	const (
 		maxIdleConns = 10
 		disable      = true
@@ -22,7 +28,6 @@ func TestWithOptions(t *testing.T) {
 	)
 
 	hr := consistenthash.NewCustomHashRing(1, nil)
-	os.Setenv("MEMCACHED_SERVERS", "localhost:11211")
 	mcl, _ := InitFromEnv(
 		WithMaxIdleConns(maxIdleConns),
 		WithTimeout(timeout),
@@ -33,6 +38,7 @@ func TestWithOptions(t *testing.T) {
 		WithDisableRefreshConnsInPool(),
 		WithDisableMemcachedDiagnostic(),
 		WithAuthentication(authUser, authPass),
+		WithDisableLogger(),
 	)
 	t.Cleanup(func() {
 		mcl.CloseAllConns()
@@ -47,4 +53,5 @@ func TestWithOptions(t *testing.T) {
 	assert.Equal(t, disable, mcl.disableRefreshConns, "WithDisableRefreshConnsInPool should set disable")
 	assert.Equal(t, disable, mcl.disableMemcachedDiagnostic, "WithDisableMemcachedDiagnostic should set disable")
 	assert.Equal(t, enable, mcl.authEnable, "WithAuthentication should set enable")
+	assert.Equal(t, disable, logger.LoggerIsDisable(), "WithDisableLogger should set disable")
 }

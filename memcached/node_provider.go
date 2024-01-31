@@ -54,7 +54,7 @@ func (c *Client) initNodesProvider() {
 }
 
 func (c *Client) checkNodesHealth() {
-	currentNodes, err := getNodes(c.cfg)
+	currentNodes, err := getNodes(c.nw.lookupHost, c.cfg)
 	if err != nil {
 		logger.Warnf("%s: Error occurred while checking nodes health, getNodes error - %s", libPrefix, err.Error())
 		return
@@ -124,7 +124,7 @@ func (c *Client) checkNodesHealth() {
 }
 
 func (c *Client) rebuildNodes() {
-	currentNodes, err := getNodes(c.cfg)
+	currentNodes, err := getNodes(c.nw.lookupHost, c.cfg)
 	if err != nil {
 		logger.Warnf("%s: Error occurred while rebuild nodes health, getNodes error - %s", libPrefix, err.Error())
 		return
@@ -193,6 +193,7 @@ func (c *Client) nodeIsDead(node any) bool {
 		countRetry uint8
 		cn         net.Conn
 	)
+
 	for {
 		cn, err = c.dial(addr)
 		if err != nil {
@@ -236,10 +237,10 @@ func (c *Client) safeRemoveFromDeadNodes(node string) {
 	delete(c.deadNodes, node)
 }
 
-func getNodes(cfg *config) ([]string, error) {
+func getNodes(lookup func(host string) (addrs []string, err error), cfg *config) ([]string, error) {
 	if cfg != nil {
 		if cfg.HeadlessServiceAddress != "" {
-			nodes, err := net.LookupHost(cfg.HeadlessServiceAddress)
+			nodes, err := lookup(cfg.HeadlessServiceAddress)
 			if err != nil {
 				return nil, err
 			}

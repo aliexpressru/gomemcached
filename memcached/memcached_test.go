@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/maps"
 
 	"github.com/aliexpressru/gomemcached/utils"
@@ -208,12 +209,58 @@ func TestDecodeSpecSample(t *testing.T) {
 	if !reflect.DeepEqual(res, expected) {
 		t.Fatalf("Expected\n%#v -- got --\n%#v", expected, res)
 	}
+	assert.Nil(t, UnwrapMemcachedError(err), "UnwrapMemcachedError: should be return nil for success getResponse")
 }
 
 func TestNilReader(t *testing.T) {
 	res, _, err := getResponse(nil, nil)
 	if !errors.Is(err, ErrNoServers) {
 		t.Fatalf("Expected error reading from nil, got %#v", res)
+	}
+}
+
+func TestNilConfig(t *testing.T) {
+	mcl, err := InitFromEnv()
+	assert.Nil(t, mcl, "InitFromEnv without config should be return nil client")
+	assert.ErrorIs(t, err, ErrNotConfigured, "InitFromEnv without config should be return error == ErrNotConfigured")
+}
+
+func TestErrWrap(t *testing.T) {
+	type args struct {
+		resp *Response
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr error
+	}{
+		{
+			name: ENOMEM.String(),
+			args: args{resp: &Response{
+				Status: ENOMEM,
+			}},
+			wantErr: ErrServerError,
+		},
+		{
+			name: TMPFAIL.String(),
+			args: args{resp: &Response{
+				Status: TMPFAIL,
+			}},
+			wantErr: ErrServerNotAvailable,
+		},
+		{
+			name: UNKNOWN_COMMAND.String(),
+			args: args{resp: &Response{
+				Status: UNKNOWN_COMMAND,
+			}},
+			wantErr: ErrUnknownCommand,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wrapErr := wrapMemcachedResp(tt.args.resp)
+			require.ErrorIs(t, wrapErr, tt.wantErr, "wrapMemcachedResp wrap error not equal expected")
+		})
 	}
 }
 
@@ -311,6 +358,34 @@ func TestLocalhost(t *testing.T) {
 func testWithClient(t *testing.T, c *Client) {
 	_, err := c.Store(Set, invalidKey, 0, []byte("foo"))
 	assert.ErrorIsf(t, err, ErrMalformedKey, "Store: invalid key, want error ErrMalformedKey")
+	_, err = c.Get(invalidKey)
+	assert.ErrorIsf(t, err, ErrMalformedKey, "Get: invalid key, want error ErrMalformedKey")
+	_, err = c.Delete(invalidKey)
+	assert.ErrorIsf(t, err, ErrMalformedKey, "Delete: invalid key, want error ErrMalformedKey")
+	_, err = c.Delta(Increment, invalidKey, 1, 0, 0)
+	assert.ErrorIsf(t, err, ErrMalformedKey, "Delta: invalid key, want error ErrMalformedKey")
+	_, err = c.Append(Append, invalidKey, []byte("foo"))
+	assert.ErrorIsf(t, err, ErrMalformedKey, "Append: invalid key, want error ErrMalformedKey")
+	_, err = c.MultiGet([]string{invalidKey, "foo", "bar"})
+	assert.ErrorIsf(t, err, ErrMalformedKey, "MultiGet: invalid key, want error ErrMalformedKey")
+	err = c.MultiDelete([]string{invalidKey, "foo", "bar"})
+	assert.ErrorIsf(t, err, ErrMalformedKey, "MultiDelete: invalid key, want error ErrMalformedKey")
+	err = c.MultiStore(Set, map[string][]byte{"foo": []byte("bar"), invalidKey: []byte("data")}, 0)
+	assert.ErrorIsf(t, err, ErrMalformedKey, "MultiDelete: invalid key, want error ErrMalformedKey")
+	resp, err := c.Store(Set, "bigdata", 0, make([]byte, MaxBodyLen+1))
+	assert.ErrorIsf(t, err, ErrDataSizeExceedsLimit, "Store: body > MaxBodyLen, want error ErrDataSizeExceedsLimit")
+	unwrapResp := UnwrapMemcachedError(err)
+	if !reflect.DeepEqual(resp, unwrapResp) {
+		t.Fatalf("Expected\n%#v -- got --\n%#v", resp, unwrapResp)
+	}
+
+	err = c.MultiStore(Set, map[string][]byte{}, 0)
+	assert.Nil(t, err, "MultiStore with 0 items should have no errors")
+	items, err := c.MultiGet([]string{})
+	assert.Nil(t, err, "MultiGet with 0 keys should have no errors")
+	assert.Empty(t, items, "MultiGet with 0 keys should return empty map")
+	err = c.MultiDelete([]string{})
+	assert.Nil(t, err, "MultiDelete with 0 keys should have no errors")
 
 	// Set
 	_, err = c.Store(Set, "foo", 0, []byte("fooval-fromset1"))
@@ -322,10 +397,12 @@ func testWithClient(t *testing.T, c *Client) {
 	assert.ErrorIsf(t, err, ErrNotStored, "Add with exist key - %s, want error - ErrNotStored, have - %v", "foo", err)
 
 	// Get
-	resp, err := c.Get("foo")
+	resp, err = c.Get("foo")
 	assert.Nilf(t, err, "get(foo): %v", err)
 	// assert.Equalf(t, []byte("foo"), resp.Key, "get(foo) Key = %s, want foo", string(resp.Key)) only for GETK
 	assert.Equalf(t, []byte("fooval-fromset2"), resp.Body, "get(foo) Body = %s, want fooval-fromset2", string(resp.Body))
+	err = wrapMemcachedResp(resp)
+	assert.Nil(t, err, "Get: wrapped success resp should be nil")
 
 	// Get and set a unicode key
 	quxKey := "Hello_世界"
@@ -396,6 +473,9 @@ func testWithClient(t *testing.T, c *Client) {
 	n, err = c.Delta(Decrement, "num", 2, 0, 0)
 	assert.Nilf(t, err, "Increment with initial value have error - %v", err)
 	assert.Equalf(t, 8, int(n), "Increment with initial value 1: want=8, got=%d", n)
+	const fakeDeltaMode = DeltaMode(42)
+	n, err = c.Delta(fakeDeltaMode, "num", 2, 0, 0)
+	assert.Nilf(t, err, "Increment with fakeDeltaMode have error - %v", err)
 
 	_, err = c.Store(Set, "num", 0, []byte("not-numeric"))
 	assert.Nilf(t, err, "Set for Increment non-numeric value have error - %v", err)
@@ -661,6 +741,59 @@ func TestConn(t *testing.T) {
 	}
 	if err = c.Close(); err != nil {
 		t.Fatalf("Error with close connection: %v", err)
+	}
+}
+
+func TestClient_Getters(t *testing.T) {
+	type fields struct {
+		timeout      time.Duration
+		maxIdleConns int
+		nodeHCPeriod time.Duration
+		nodeRBPeriod time.Duration
+	}
+	tests := []struct {
+		name             string
+		fields           fields
+		wantTimeout      time.Duration
+		wantMaxIdleConns int
+		wantNodeHCPeriod time.Duration
+		wantNodeRBPeriod time.Duration
+	}{
+		{
+			name:             "Default",
+			fields:           fields{},
+			wantTimeout:      DefaultTimeout,
+			wantMaxIdleConns: DefaultMaxIdleConns,
+			wantNodeHCPeriod: DefaultNodeHealthCheckPeriod,
+			wantNodeRBPeriod: DefaultRebuildingNodePeriod,
+		},
+		{
+			name: "Custom",
+			fields: fields{
+				timeout:      5 * time.Second,
+				maxIdleConns: 50,
+				nodeHCPeriod: time.Second,
+				nodeRBPeriod: time.Second,
+			},
+			wantTimeout:      5 * time.Second,
+			wantMaxIdleConns: 50,
+			wantNodeHCPeriod: time.Second,
+			wantNodeRBPeriod: time.Second,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Client{
+				timeout:      tt.fields.timeout,
+				maxIdleConns: tt.fields.maxIdleConns,
+				nodeHCPeriod: tt.fields.nodeHCPeriod,
+				nodeRBPeriod: tt.fields.nodeRBPeriod,
+			}
+			assert.Equalf(t, tt.wantTimeout, c.netTimeout(), "netTimeout()")
+			assert.Equalf(t, tt.wantMaxIdleConns, c.getMaxIdleConns(), "getMaxIdleConns()")
+			assert.Equalf(t, tt.wantNodeHCPeriod, c.getHCPeriod(), "getHCPeriod()")
+			assert.Equalf(t, tt.wantNodeRBPeriod, c.getRBPeriod(), "getRBPeriod()")
+		})
 	}
 }
 

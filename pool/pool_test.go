@@ -3,6 +3,7 @@ package pool
 import (
 	"context"
 	"math/rand"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,18 +20,26 @@ func newTestConnection() (any, error) {
 	return &testConnection{}, nil
 }
 
+func newTestConnectionWithErr() (any, error) {
+	return nil, http.ErrHandlerTimeout
+}
+
 func closeTestConnection(any) {
 	// Do nothing
 }
 
 func TestPool(t *testing.T) {
+	assert.Panics(t, func() {
+		_ = New(context.TODO(), 0, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	}, "was expected panic")
+
 	defer func() {
 		if pErr := recover(); pErr != nil {
 			t.Fatalf("pool have panic - %v", pErr)
 		}
 	}()
 
-	p := New(context.Background(), 2, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	p := New(context.TODO(), 2, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 	defer p.Destroy()
 
 	_, ok := p.Pop()
@@ -66,7 +75,7 @@ func TestPool(t *testing.T) {
 }
 
 func TestPoolConcurrency(t *testing.T) {
-	p := New(context.Background(), 10, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	p := New(context.TODO(), 10, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 	defer p.Destroy()
 
 	var wg sync.WaitGroup
@@ -87,7 +96,7 @@ func TestPoolConcurrency(t *testing.T) {
 
 func TestCountConns(t *testing.T) {
 	const count = 300
-	p := New(context.Background(), int32(count), defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	p := New(context.TODO(), int32(count), defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 
 	conn := atomic.Int32{}
 	wg1 := sync.WaitGroup{}
@@ -145,7 +154,7 @@ func TestCountConns(t *testing.T) {
 	assert.Nil(t, cn, "Get: after method Destroy, pool is closed and should return cn == nil")
 	assert.ErrorIs(t, err, ErrClosedPool, "Get: after method Destroy, pool is closed, want error ErrClosedPool")
 
-	p2 := New(context.Background(), count, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	p2 := New(context.TODO(), count, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 
 	var (
 		mu    sync.RWMutex
@@ -217,10 +226,10 @@ func TestCountConns(t *testing.T) {
 		}()
 	}
 
-	p3 := New(context.Background(), 1, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	p3 := New(context.TODO(), 1, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 
 	// maxConns is full
-	p3.Get()
+	_, _ = p3.Get()
 
 	cn, err = p3.Get()
 	assert.Nil(t, cn, "Get: after a timeout, it should return cn == nil")
@@ -233,4 +242,38 @@ func TestCountConns(t *testing.T) {
 	cn, ok = p3.Pop()
 	assert.Nil(t, cn, "Pop: after method Destroy, pool is closed and should return cn == nil")
 	assert.False(t, ok, "Pop: after method Destroy, pool is closed and should return false for second arg")
+
+	p4 := New(context.TODO(), 1, defaultSocketPoolingTimeout, newTestConnectionWithErr, closeTestConnection)
+
+	cn, err = p4.Get()
+	assert.Nil(t, cn, "Get: create new conn returned an error, conn should be nil")
+	assert.ErrorIs(t, err, http.ErrHandlerTimeout, "Get: error should be equal - http.ErrHandlerTimeout")
+
+	p5 := New(context.TODO(), 1, time.Second, nil, nil)
+
+	cn, err = p5.Get()
+	assert.Nil(t, cn, "Get: newFunc equal nil, conn should be nil")
+	assert.ErrorIs(t, err, ErrNewFuncNil, "Get: error should be equal ErrNewFuncNil")
+
+	p6 := New(context.TODO(), 1, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	bcn, err := p6.Get()
+	assert.NotNil(t, bcn, "Get: conn cannot be nil")
+	assert.Nil(t, err, "Get: error should be nil")
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		cn, err = p6.Get()
+		assert.Nil(t, cn, "Get: conn should be nil")
+		assert.ErrorIs(t, err, ErrClosedPool, "Get: error should be equal ErrClosedPool")
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-time.After(10 * time.Millisecond)
+		p6.Close(bcn)
+		p6.Destroy()
+	}()
+
+	wg.Wait()
 }

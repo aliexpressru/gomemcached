@@ -90,6 +90,18 @@ func TestOpCode_changeOnQuiet(t *testing.T) {
 			want: GETQ,
 		},
 		{
+			name: GETQ.String(),
+			o:    GETQ,
+			args: args{def: GETQ},
+			want: GETQ,
+		},
+		{
+			name: "unknown opcode",
+			o:    OpCode(0x1b),
+			args: args{def: GETQ},
+			want: GETQ,
+		},
+		{
 			name: SET.String(),
 			o:    SET,
 			args: args{def: GETQ},
