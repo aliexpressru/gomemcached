@@ -9,7 +9,7 @@
 [![Godoc](https://godoc.org/github.com/aliexpressru/gomemcached?status.svg)](https://pkg.go.dev/github.com/aliexpressru/gomemcached)
 
 [![Tag](https://img.shields.io/github/v/tag/aliexpressru/gomemcached?color=%23ff8936&logo=fitbit&style=flat-square)](https://github.com/aliexpressru/gomemcached/tags)
-![Coverage](https://img.shields.io/badge/Coverage-69.8%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-79.1%25-yellow)
 </div>
 
 ___
