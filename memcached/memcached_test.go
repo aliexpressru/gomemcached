@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/maps"
 
+	"github.com/aliexpressru/gomemcached/consistenthash"
 	"github.com/aliexpressru/gomemcached/utils"
 )
 
@@ -347,6 +348,9 @@ func TestLocalhost(t *testing.T) {
 		t.Fatalf("Error with close connection: %v", err)
 	}
 
+	_, err = newForTests("invalidServerAddr")
+	require.ErrorIs(t, err, ErrInvalidAddr)
+
 	mc, err := newForTests(localhostTCPAddr)
 	if err != nil {
 		t.Fatalf("failed to create new client: %v", err)
@@ -356,22 +360,6 @@ func TestLocalhost(t *testing.T) {
 }
 
 func testWithClient(t *testing.T, c *Client) {
-	_, err := c.Store(Set, invalidKey, 0, []byte("foo"))
-	assert.ErrorIsf(t, err, ErrMalformedKey, "Store: invalid key, want error ErrMalformedKey")
-	_, err = c.Get(invalidKey)
-	assert.ErrorIsf(t, err, ErrMalformedKey, "Get: invalid key, want error ErrMalformedKey")
-	_, err = c.Delete(invalidKey)
-	assert.ErrorIsf(t, err, ErrMalformedKey, "Delete: invalid key, want error ErrMalformedKey")
-	_, err = c.Delta(Increment, invalidKey, 1, 0, 0)
-	assert.ErrorIsf(t, err, ErrMalformedKey, "Delta: invalid key, want error ErrMalformedKey")
-	_, err = c.Append(Append, invalidKey, []byte("foo"))
-	assert.ErrorIsf(t, err, ErrMalformedKey, "Append: invalid key, want error ErrMalformedKey")
-	_, err = c.MultiGet([]string{invalidKey, "foo", "bar"})
-	assert.ErrorIsf(t, err, ErrMalformedKey, "MultiGet: invalid key, want error ErrMalformedKey")
-	err = c.MultiDelete([]string{invalidKey, "foo", "bar"})
-	assert.ErrorIsf(t, err, ErrMalformedKey, "MultiDelete: invalid key, want error ErrMalformedKey")
-	err = c.MultiStore(Set, map[string][]byte{"foo": []byte("bar"), invalidKey: []byte("data")}, 0)
-	assert.ErrorIsf(t, err, ErrMalformedKey, "MultiDelete: invalid key, want error ErrMalformedKey")
 	resp, err := c.Store(Set, "bigdata", 0, make([]byte, MaxBodyLen+1))
 	assert.ErrorIsf(t, err, ErrDataSizeExceedsLimit, "Store: body > MaxBodyLen, want error ErrDataSizeExceedsLimit")
 	unwrapResp := UnwrapMemcachedError(err)
@@ -379,6 +367,7 @@ func testWithClient(t *testing.T, c *Client) {
 		t.Fatalf("Expected\n%#v -- got --\n%#v", resp, unwrapResp)
 	}
 
+	// multi
 	err = c.MultiStore(Set, map[string][]byte{}, 0)
 	assert.Nil(t, err, "MultiStore with 0 items should have no errors")
 	items, err := c.MultiGet([]string{})
@@ -795,6 +784,96 @@ func TestClient_Getters(t *testing.T) {
 			assert.Equalf(t, tt.wantNodeRBPeriod, c.getRBPeriod(), "getRBPeriod()")
 		})
 	}
+}
+
+func TestMethodsErrors(t *testing.T) {
+	c := &Client{
+		hr:                         consistenthash.NewHashRing(),
+		disableMemcachedDiagnostic: true,
+	}
+
+	// invalid key
+	_, err := c.Store(Set, invalidKey, 0, []byte("foo"))
+	assert.ErrorIsf(t, err, ErrMalformedKey, "Store: invalid key, want error ErrMalformedKey")
+	_, err = c.Get(invalidKey)
+	assert.ErrorIsf(t, err, ErrMalformedKey, "Get: invalid key, want error ErrMalformedKey")
+	_, err = c.Delete(invalidKey)
+	assert.ErrorIsf(t, err, ErrMalformedKey, "Delete: invalid key, want error ErrMalformedKey")
+	_, err = c.Delta(Increment, invalidKey, 1, 0, 0)
+	assert.ErrorIsf(t, err, ErrMalformedKey, "Delta: invalid key, want error ErrMalformedKey")
+	_, err = c.Append(Append, invalidKey, []byte("foo"))
+	assert.ErrorIsf(t, err, ErrMalformedKey, "Append: invalid key, want error ErrMalformedKey")
+	_, err = c.MultiGet([]string{invalidKey, "foo", "bar"})
+	assert.ErrorIsf(t, err, ErrMalformedKey, "MultiGet: invalid key, want error ErrMalformedKey")
+	err = c.MultiDelete([]string{invalidKey, "foo", "bar"})
+	assert.ErrorIsf(t, err, ErrMalformedKey, "MultiDelete: invalid key, want error ErrMalformedKey")
+	err = c.MultiStore(Set, map[string][]byte{"foo": []byte("bar"), invalidKey: []byte("data")}, 0)
+	assert.ErrorIsf(t, err, ErrMalformedKey, "MultiDelete: invalid key, want error ErrMalformedKey")
+
+	// empty hash ring
+	_, err = c.Store(Set, "store", 0, []byte("foo"))
+	assert.ErrorIsf(t, err, ErrNoServers, "Store: with empty hash ring, want error ErrNoServers")
+	_, err = c.Get("get")
+	assert.ErrorIsf(t, err, ErrNoServers, "Get: with empty hash ring, want error ErrNoServers")
+	_, err = c.Delete("delete")
+	assert.ErrorIsf(t, err, ErrNoServers, "Delete: with empty hash ring, want error ErrNoServers")
+	_, err = c.Delta(Increment, "deltaInc", 1, 0, 0)
+	assert.ErrorIsf(t, err, ErrNoServers, "Delta: with empty hash ring, want error ErrNoServers")
+	_, err = c.Append(Append, "append", []byte("foo"))
+	assert.ErrorIsf(t, err, ErrNoServers, "Append: with empty hash ring, want error ErrNoServers")
+
+	// add invalid node
+	c.hr.Add("node1")
+
+	// invalid node
+	_, err = c.Store(Set, "store", 0, []byte("foo"))
+	assert.ErrorIsf(t, err, ErrInvalidAddr, "Store: invalid node, want error ErrInvalidAddr")
+	_, err = c.Get("get")
+	assert.ErrorIsf(t, err, ErrInvalidAddr, "Get: invalid node, want error ErrInvalidAddr")
+	_, err = c.Delete("delete")
+	assert.ErrorIsf(t, err, ErrInvalidAddr, "Delete: invalid node, want error ErrInvalidAddr")
+	_, err = c.Delta(Increment, "deltaInc", 1, 0, 0)
+	assert.ErrorIsf(t, err, ErrInvalidAddr, "Delta: invalid node, want error ErrInvalidAddr")
+	_, err = c.Append(Append, "append", []byte("foo"))
+	assert.ErrorIsf(t, err, ErrInvalidAddr, "Append: invalid node, want error ErrInvalidAddr")
+	_, err = c.MultiGet([]string{"gopher", "foo", "bar"})
+	assert.ErrorIsf(t, err, ErrInvalidAddr, "MutliGet: invalid node, want error ErrInvalidAddr")
+	err = c.MultiDelete([]string{"gopher", "foo", "bar"})
+	assert.ErrorIsf(t, err, ErrInvalidAddr, "MutliDelete: invalid node, want error ErrInvalidAddr")
+	err = c.MultiStore(Set, map[string][]byte{"foo": []byte("bar"), "data": []byte("data")}, 0)
+	assert.ErrorIsf(t, err, ErrInvalidAddr, "MutliStore: invalid node, want error ErrInvalidAddr")
+
+	var (
+		mockNetworkHeadlessErr = new(MockNetworkOperations)
+
+		expectedErr = errors.New("mocked dial error")
+
+		headlessServiceAddress = "example.com"
+	)
+	mockNetworkHeadlessErr.On("LookupHost", headlessServiceAddress).Return(nil, expectedErr)
+
+	op := &options{
+		Client: Client{
+			nw:  &network{lookupHost: mockNetworkHeadlessErr.LookupHost},
+			cfg: &config{HeadlessServiceAddress: headlessServiceAddress},
+		},
+	}
+
+	_, err = newFromConfig(op)
+	assert.ErrorIs(t, err, ErrInvalidAddr)
+
+	mockNetworkNodeErr := new(MockNetworkOperations)
+	mockNetworkNodeErr.On("LookupHost", headlessServiceAddress).Return([]string{"wrongNode"}, nil)
+
+	op = &options{
+		Client: Client{
+			nw:  &network{lookupHost: mockNetworkNodeErr.LookupHost},
+			cfg: &config{HeadlessServiceAddress: headlessServiceAddress},
+		},
+	}
+
+	_, err = newFromConfig(op)
+	assert.ErrorIs(t, err, ErrInvalidAddr)
 }
 
 const invalidKey = `Loremipsumdolorsitamet,consecteturadipiscingelit.Velelitvoluptateeleifendquisproidentnonfeugaitiriureliberminimveniamillumcupiditataliquid,nihiltefeugiatlobortiseleifendnibhproidenttationatoptionesseconsectetuerdeserunt.Gubergrenveroidsolutaquis.Dignissimlobortisloremveroenimrebumconsetetur.`
