@@ -166,6 +166,34 @@ func TestHashRing_RemoveInterface(t *testing.T) {
 	assert.Equal(t, 2, node.(*mockNode).id)
 }
 
+func Test_innerRepr(t *testing.T) {
+	type args struct {
+		node any
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "localhost:11211",
+			args: args{node: "localhost:11211"},
+			want: fmt.Sprintf("%d:%v", prime, "localhost:11211"),
+		},
+		{
+			name: "127.0.0.1:11211",
+			args: args{node: "127.0.0.1:11211"},
+			want: fmt.Sprintf("%d:%v", prime, "127.0.0.1:11211"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := innerRepr(tt.args.node)
+			assert.Equal(t, tt.want, out, "innerRepr: returned wrong format")
+		})
+	}
+}
+
 func getKeysBeforeAndAfterFailure(t *testing.T, prefix string, index int) (map[int]string, map[int]string) {
 	ch := NewHashRing()
 	for i := 0; i < keySize; i++ {

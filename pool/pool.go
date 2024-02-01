@@ -24,6 +24,7 @@ type ConnPool interface {
 	Put(v any)
 	Destroy()
 	Len() int
+	Close(v any)
 }
 
 // Pool common connection pool

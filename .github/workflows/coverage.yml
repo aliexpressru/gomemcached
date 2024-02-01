@@ -28,14 +28,14 @@ jobs:
 
       - name: Test
         run: |
-          go test -v -cover ./... -coverprofile coverage.out -coverpkg ./...
+          go test -v -cover ./... -coverprofile coverage.out
           go tool cover -func coverage.out -o coverage.out 
 
       - name: Go Coverage Badge
         uses: tj-actions/coverage-badge-go@v1
         if: ${{ runner.os == 'linux' }}
         with:
-          green: 70
+          green: 80
           filename: coverage.out
 
       - uses: stefanzweifel/git-auto-commit-action@v5

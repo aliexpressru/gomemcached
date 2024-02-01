@@ -2,6 +2,7 @@ package logger
 
 import (
 	"os"
+	"sync/atomic"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -10,7 +11,7 @@ import (
 var (
 	// global logger instance.
 	global         *zap.SugaredLogger
-	disableLogger  bool
+	disableLogger  atomic.Bool
 	defaultLevel   = zap.NewAtomicLevelAt(zap.DebugLevel)
 	generationArgs = []any{"@gen", "1"}
 )
@@ -31,7 +32,12 @@ func GetLogger() *zap.SugaredLogger {
 
 // DisableLogger turn off all logs, globally.
 func DisableLogger() {
-	disableLogger = true
+	disableLogger.Store(true)
+}
+
+// LoggerIsDisable checks the status of the logger (true - disabled, false - enabled)
+func LoggerIsDisable() bool {
+	return disableLogger.Load()
 }
 
 func newSugaredLogger(level zapcore.LevelEnabler, options ...zap.Option) *zap.SugaredLogger {
@@ -75,70 +81,70 @@ func capitalLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 
 // Debug ...
 func Debug(args ...any) {
-	if log := GetLogger(); !disableLogger {
+	if log := GetLogger(); !LoggerIsDisable() {
 		log.Debug(args...)
 	}
 }
 
 // Debugf ...
 func Debugf(format string, args ...any) {
-	if log := GetLogger(); !disableLogger {
+	if log := GetLogger(); !LoggerIsDisable() {
 		log.Debugf(format, args...)
 	}
 }
 
 // Info ...
 func Info(args ...any) {
-	if log := GetLogger(); !disableLogger {
+	if log := GetLogger(); !LoggerIsDisable() {
 		log.Info(args...)
 	}
 }
 
 // Infof ...
 func Infof(format string, args ...any) {
-	if log := GetLogger(); !disableLogger {
+	if log := GetLogger(); !LoggerIsDisable() {
 		log.Infof(format, args...)
 	}
 }
 
 // Warn ...
 func Warn(args ...any) {
-	if log := GetLogger(); !disableLogger {
+	if log := GetLogger(); !LoggerIsDisable() {
 		log.Warn(args...)
 	}
 }
 
 // Warnf ...
 func Warnf(format string, args ...any) {
-	if log := GetLogger(); !disableLogger {
+	if log := GetLogger(); !LoggerIsDisable() {
 		log.Warnf(format, args...)
 	}
 }
 
 // Error ...
 func Error(args ...any) {
-	if log := GetLogger(); !disableLogger {
+	if log := GetLogger(); !LoggerIsDisable() {
 		log.Error(args...)
 	}
 }
 
 // Errorf ...
 func Errorf(format string, args ...any) {
-	if log := GetLogger(); !disableLogger {
+	if log := GetLogger(); !LoggerIsDisable() {
 		log.Errorf(format, args...)
 	}
 }
 
 // Fatal ...
 func Fatal(args ...any) {
-	if log := GetLogger(); !disableLogger {
+	if log := GetLogger(); !LoggerIsDisable() {
 		log.Fatal(args...)
 	}
 }
 
 // Fatalf ...
 func Fatalf(format string, args ...any) {
-	if log := GetLogger(); !disableLogger {
+	if log := GetLogger(); !LoggerIsDisable() {
 		log.Fatalf(format, args...)
 	}
 }
