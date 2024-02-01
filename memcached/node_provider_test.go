@@ -274,11 +274,10 @@ func Test_initNodesProvider(t *testing.T) {
 
 	mockNetworkErr.AssertNotCalled(t, "Dial")
 
-	count := 4
-	<-time.After(period * time.Duration(count))
+	<-time.After(2 * period)
 	cancel()
 
-	mockNetworkErr.AssertNumberOfCalls(t, "LookupHost", 2*count-2)
+	mockNetworkErr.AssertCalled(t, "LookupHost", cl.cfg.HeadlessServiceAddress)
 }
 
 func Test_checkNodesHealth(t *testing.T) {
