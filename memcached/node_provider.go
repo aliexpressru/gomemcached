@@ -78,8 +78,8 @@ func (c *Client) checkNodesHealth() {
 	for node := range c.safeGetDeadNodes() {
 		wg.Add(1)
 		go func(n string) {
+			defer wg.Done()
 			recheckDeadNodes(n)
-			wg.Done()
 		}(node)
 	}
 	wg.Wait()
@@ -92,11 +92,11 @@ func (c *Client) checkNodesHealth() {
 	for _, node := range ringNodes {
 		wg.Add(1)
 		go func(n any) {
+			defer wg.Done()
 			if c.nodeIsDead(n) {
 				sNode := utils.Repr(n)
 				c.safeAddToDeadNodes(sNode)
 			}
-			wg.Done()
 		}(node)
 	}
 
@@ -127,8 +127,7 @@ func (c *Client) rebuildNodes() {
 	}
 	slices.Sort(currentNodes)
 
-	deadNodes := c.safeGetDeadNodes()
-	for node := range deadNodes {
+	for node := range c.safeGetDeadNodes() {
 		currentNodes = slices.DeleteFunc(currentNodes, func(a string) bool { return a == node })
 	}
 
@@ -246,6 +245,12 @@ func getNodes(lookup func(host string) (addrs []string, err error), cfg *config)
 
 			return nodesWithHost, nil
 		} else if len(cfg.Servers) != 0 {
+			for _, s := range cfg.Servers {
+				_, _, err := net.SplitHostPort(s)
+				if err != nil {
+					return nil, err
+				}
+			}
 			return cfg.Servers, nil
 		}
 	}

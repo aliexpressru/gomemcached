@@ -83,7 +83,7 @@ func Test_getNodes(t *testing.T) {
 			},
 		},
 		{
-			name: "error",
+			name: "error headless",
 			args: args{
 				mock: &network{lookupHost: func(host string) (addrs []string, err error) {
 					return nil, &net.DNSError{
@@ -99,6 +99,20 @@ func Test_getNodes(t *testing.T) {
 					assert.ErrorAs(t, err, &dnsError, "Error should be as net.DNSError")
 					return true
 				}
+				return false
+			},
+		},
+		{
+			name: "error servers",
+			args: args{
+				mock: new(network),
+				cfg:  &config{Servers: []string{"localhost:1234", "fakeaddress.r", "localhost"}}},
+			want: nil,
+			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+				if err != nil {
+					return true
+				}
+				t.Errorf("getNodes dot't have error")
 				return false
 			},
 		},
