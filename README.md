@@ -9,7 +9,7 @@
 [![Godoc](https://godoc.org/github.com/aliexpressru/gomemcached?status.svg)](https://pkg.go.dev/github.com/aliexpressru/gomemcached)
 
 [![Gomemcached](https://goreportcard.com/badge/github.com/aliexpressru/gomemcached)](https://goreportcard.com/report/github.com/aliexpressru/gomemcached)
-![Coverage](https://img.shields.io/badge/Coverage-90.9%25-brightgreen)
+![Coverage](https://img.shields.io/badge/Coverage-91.0%25-brightgreen)
 
 [![Mentioned in Awesome Go](https://awesome.re/mentioned-badge.svg)](https://github.com/avelino/awesome-go?tab=readme-ov-file#nosql-database-drivers)
 </div>
