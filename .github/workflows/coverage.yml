@@ -47,7 +47,7 @@ jobs:
 
       - name: Test
         run: |
-          go test -v -cover ./... -coverprofile coverage.out
+          go test -v -cover ./... -coverprofile coverage.out -coverpkg=./memcached,./pool,./consistenthash,./utils
           go tool cover -func coverage.out -o coverage.out 
 
       - name: Install gobadge
