@@ -131,20 +131,23 @@ func (c *Client) rebuildNodes() {
 		currentNodes = slices.DeleteFunc(currentNodes, func(a string) bool { return a == node })
 	}
 
-	var nodesInRing []string
-	for _, node := range c.hr.GetAllNodes() {
-		nodesInRing = append(nodesInRing, utils.Repr(node))
+	var (
+		allNodes    = c.hr.GetAllNodes()
+		nodesInRing = make([]string, len(allNodes))
+	)
+	for i := range allNodes {
+		nodesInRing[i] = utils.Repr(allNodes[i])
 	}
 	slices.Sort(nodesInRing)
 
-	var nodesToAdd []string
+	nodesToAdd := make([]string, 0, len(currentNodes))
 	for _, node := range currentNodes {
 		if _, ok := slices.BinarySearch(nodesInRing, node); !ok {
 			nodesToAdd = append(nodesToAdd, node)
 		}
 	}
 
-	var nodesToRemove []string
+	nodesToRemove := make([]string, 0, len(nodesInRing))
 	for _, node := range nodesInRing {
 		if _, ok := slices.BinarySearch(currentNodes, node); !ok {
 			nodesToRemove = append(nodesToRemove, node)
@@ -172,7 +175,12 @@ func (c *Client) rebuildNodes() {
 	}
 
 	if !c.disableRefreshConns {
-		_ = c.CloseAvailableConnsInAllShardPools(DefaultOfNumberConnsToDestroyPerRBPeriod)
+		_, err = c.CloseAvailableConnsInAllShardPools(c.ctx, DefaultOfNumberConnsToDestroyPerRBPeriod)
+		if err != nil {
+			logger.Warnf("%s: Error occurred while draining connections, CloseAvailableConnsInAllShardPools error - %s",
+				libPrefix, err.Error(),
+			)
+		}
 	}
 }
 
@@ -196,14 +204,13 @@ func (c *Client) nodeIsDead(node any) bool {
 					countRetry++
 					continue
 				}
-				logger.Errorf("%s. Node health check failed. error - %s, with timeout - %d",
+				logger.Errorf("%s. Node health check failed. error - %s, with timeout - %s",
 					ErrServerError.Error(), err.Error(), c.netTimeout(),
 				)
 				return true
-			} else {
-				logger.Errorf("%s. %s", ErrServerError.Error(), err.Error())
-				return true
 			}
+			logger.Errorf("%s. %s", ErrServerError.Error(), err.Error())
+			return true
 		}
 		_ = cn.Close()
 		break

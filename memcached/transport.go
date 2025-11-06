@@ -1,8 +1,11 @@
 package memcached
 
 import (
+	"context"
 	"errors"
 	"io"
+	"net"
+	"time"
 )
 
 // UnwrapMemcachedError converts memcached errors to normal responses.
@@ -37,4 +40,27 @@ func transmitRequest(o io.Writer, req *Request) (int, error) {
 	}
 	n, err := req.Transmit(o)
 	return n, err
+}
+
+type deadliner interface {
+	SetDeadline(ctx context.Context)
+	ClearDeadline()
+}
+
+type dl struct {
+	cn net.Conn
+}
+
+func newDeadliner(cn net.Conn) deadliner { // nolint:ireturn
+	return &dl{cn: cn}
+}
+
+func (d *dl) SetDeadline(ctx context.Context) {
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = d.cn.SetDeadline(deadline)
+	}
+}
+
+func (d *dl) ClearDeadline() {
+	_ = d.cn.SetDeadline(time.Time{})
 }

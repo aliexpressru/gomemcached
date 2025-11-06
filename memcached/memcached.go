@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -49,18 +48,18 @@ var _ Memcached = (*Client)(nil)
 
 type (
 	Memcached interface {
-		Store(storeMode StoreMode, key string, exp uint32, body []byte) (*Response, error)
-		Get(key string) (*Response, error)
-		Delete(key string) (*Response, error)
-		Delta(deltaMode DeltaMode, key string, delta, initial uint64, exp uint32) (newValue uint64, err error)
-		Append(appendMode AppendMode, key string, data []byte) (*Response, error)
-		FlushAll(exp uint32) error
-		MultiDelete(keys []string) error
-		MultiStore(storeMode StoreMode, items map[string][]byte, exp uint32) error
-		MultiGet(keys []string) (map[string][]byte, error)
+		Store(ctx context.Context, storeMode StoreMode, key string, exp uint32, body []byte) (*Response, error)
+		Get(ctx context.Context, key string) (*Response, error)
+		Delete(ctx context.Context, key string) (*Response, error)
+		Delta(ctx context.Context, deltaMode DeltaMode, key string, delta, initial uint64, exp uint32) (newValue uint64, err error)
+		Append(ctx context.Context, appendMode AppendMode, key string, data []byte) (*Response, error)
+		FlushAll(ctx context.Context, exp uint32) error
+		MultiDelete(ctx context.Context, keys []string) error
+		MultiStore(ctx context.Context, storeMode StoreMode, items map[string][]byte, exp uint32) error
+		MultiGet(ctx context.Context, keys []string) (map[string][]byte, error)
 
-		CloseAllConns()
-		CloseAvailableConnsInAllShardPools(numOfClose int) int
+		CloseAllConns(ctx context.Context) error
+		CloseAvailableConnsInAllShardPools(ctx context.Context, numOfClose int) (int, error)
 	}
 
 	// Client is a memcached client.
@@ -88,11 +87,11 @@ type (
 		// hr - hash ring implementation (can be a custom consistenthash.NewCustomHashRing)
 		hr consistenthash.ConsistentHash
 
-		// disableMemcachedDiagnostic - is flag for turn off write metrics from lib.
+		// disableMemcachedDiagnostic - is a flag for turn off write metrics from lib.
 		disableMemcachedDiagnostic bool
-		// disableNodeProvider - is flag for turn off rebuild and health check nodes.
+		// disableNodeProvider - is a flag for turnoff rebuild and health check nodes.
 		disableNodeProvider bool
-		// disableRefreshConns - is flag for turn off to refresh conns in the pool.
+		// disableRefreshConns - is a flag for turn off to refresh conns in the pool.
 		disableRefreshConns bool
 		// nodeHCPeriod - period for execute nodes health checker
 		// if zero, DefaultNodeHealthCheckPeriod is used.
@@ -124,12 +123,13 @@ type (
 	config struct {
 		// HeadlessServiceAddress Headless service to lookup all the memcached ip addresses.
 		HeadlessServiceAddress string `envconfig:"MEMCACHED_HEADLESS_SERVICE_ADDRESS"`
-		// Servers List of servers with hosted memcached
+		// Servers List of servers with hosted memcached (with ports)
 		Servers []string `envconfig:"MEMCACHED_SERVERS"`
 		// MemcachedPort The optional port override for cases when memcached IP addresses are obtained from headless service.
 		MemcachedPort int `envconfig:"MEMCACHED_PORT" default:"11211"`
 	}
 	conn struct {
+		dl      deadliner
 		rc      io.ReadCloser
 		addr    net.Addr
 		c       *Client
@@ -143,7 +143,7 @@ type (
 // InitFromEnv returns a memcached client using the config.HeadlessServiceAddress or config.Servers
 // with equal weight. If a server is listed multiple times,
 // it gets a proportional amount of weight.
-func InitFromEnv(opts ...Option) (*Client, error) {
+func InitFromEnv(ctx context.Context, opts ...Option) (*Client, error) {
 	var (
 		op  = new(options)
 		cfg = new(config)
@@ -158,55 +158,34 @@ func InitFromEnv(opts ...Option) (*Client, error) {
 		opt(op)
 	}
 
-	if op.Client.nw == nil {
-		op.Client.nw = &network{
+	if op.nw == nil {
+		op.nw = &network{
 			dial:        net.Dial,
 			dialTimeout: net.DialTimeout,
 			lookupHost:  net.LookupHost,
 		}
 	}
-	if op.Client.hr == nil {
-		op.Client.hr = consistenthash.NewHashRing()
+	if op.hr == nil {
+		op.hr = consistenthash.NewHashRing()
 	}
-	if op.Client.ctx == nil {
-		op.Client.ctx = context.Background()
-	}
-	if op.Client.opaque == nil {
-		op.Client.opaque = new(uint32)
+	if op.opaque == nil {
+		op.opaque = new(uint32)
 	}
 	if op.disableLogger {
 		logger.DisableLogger()
+	}
+	op.ctx = ctx
+
+	// Initialize metrics with custom or default configuration
+	if !op.disableMemcachedDiagnostic {
+		initMetrics(op.metricsRegisterer, op.metricsDurationBuckets, op.metricsObjectSizeBuckets)
 	}
 
 	return newFromConfig(op)
 }
 
-func newForTests(servers ...string) (*Client, error) {
-	hr := consistenthash.NewHashRing()
-	for _, s := range servers {
-		addr, err := utils.AddrRepr(s)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %s", ErrInvalidAddr, err.Error())
-		}
-		hr.Add(addr)
-	}
-	cm := &Client{
-		ctx:                        context.Background(),
-		opaque:                     new(uint32),
-		hr:                         hr,
-		disableMemcachedDiagnostic: true,
-		nw: &network{
-			dial:        net.Dial,
-			dialTimeout: net.DialTimeout,
-			lookupHost:  net.LookupHost,
-		},
-	}
-
-	return cm, nil
-}
-
 func newFromConfig(op *options) (*Client, error) {
-	if op.cfg != nil && !(op.cfg.HeadlessServiceAddress != "" || len(op.cfg.Servers) != 0) {
+	if op.cfg != nil && (op.cfg.HeadlessServiceAddress == "" && len(op.cfg.Servers) == 0) {
 		return nil, fmt.Errorf("%w, you must fill in either MEMCACHED_HEADLESS_SERVICE_ADDRESS or MEMCACHED_SERVERS", ErrNotConfigured)
 	}
 	nodes, err := getNodes(op.nw.lookupHost, op.cfg)
@@ -249,6 +228,7 @@ func (cn *conn) close() {
 // are bad.
 func (cn *conn) condRelease(err *error) {
 	if (*err == nil || resumableError(*err)) && cn.healthy {
+		cn.dl.ClearDeadline()
 		cn.release()
 	} else {
 		cn.close()
@@ -256,7 +236,6 @@ func (cn *conn) condRelease(err *error) {
 }
 
 func (c *Client) getOpaque() uint32 {
-	atomic.CompareAndSwapUint32(c.opaque, math.MaxUint32, uint32(0))
 	return atomic.AddUint32(c.opaque, uint32(1))
 }
 
@@ -282,6 +261,7 @@ func (c *Client) safeGetOrInitFreeConn(addr net.Addr) *pool.Pool {
 			return nil, err
 		}
 		return &conn{
+			dl:      newDeadliner(nc),
 			rc:      nc,
 			addr:    addr,
 			c:       c,
@@ -320,10 +300,10 @@ func (c *Client) putFreeConn(cn *conn) {
 	}
 }
 
-func (c *Client) getFreeConn(addr net.Addr) (*conn, error) {
+func (c *Client) getFreeConn(ctx context.Context, addr net.Addr) (*conn, error) {
 	connPool := c.safeGetOrInitFreeConn(addr)
 
-	connRaw, err := connPool.Get()
+	connRaw, err := connPool.Get(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%s: Get from pool error - %w", libPrefix, err)
 	}
@@ -331,11 +311,11 @@ func (c *Client) getFreeConn(addr net.Addr) (*conn, error) {
 	cn := connRaw.(*conn)
 
 	if c.authEnable && !cn.authed {
-		if c.authenticate(cn) {
+		if ok, aErr := c.authenticate(cn); ok {
 			cn.authed = true
 			return cn, nil
 		} else {
-			return nil, ErrAuthFail
+			return nil, fmt.Errorf("%w, %s", ErrAuthFail, aErr)
 		}
 	}
 
@@ -410,23 +390,25 @@ func (c *Client) dial(addr net.Addr) (net.Conn, error) {
 	return c.nw.dial(addr.Network(), addr.String())
 }
 
-func (c *Client) getConnForNode(node any) (*conn, error) {
+func (c *Client) getConnForNode(ctx context.Context, node any) (*conn, error) {
 	addr, ok := node.(net.Addr)
 	if !ok {
 		return nil, ErrInvalidAddr
 	}
-	cn, err := c.getFreeConn(addr)
+	cn, err := c.getFreeConn(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
 
+	cn.dl.SetDeadline(ctx)
 	return cn, nil
 }
 
 // Store is a wrote the provided item with expiration.
-func (c *Client) Store(storeMode StoreMode, key string, exp uint32, body []byte) (_ *Response, err error) {
+func (c *Client) Store(ctx context.Context, storeMode StoreMode, key string, exp uint32, body []byte) (_ *Response, err error) {
+	const methodName = "Store"
 	timer := time.Now()
-	defer c.writeMethodDiagnostics("Store", timer, &err)
+	defer c.writeMethodDiagnostics(methodName, timer, &err)
 
 	if !legalKey(key) {
 		return nil, ErrMalformedKey
@@ -437,14 +419,16 @@ func (c *Client) Store(storeMode StoreMode, key string, exp uint32, body []byte)
 		return nil, ErrNoServers
 	}
 
-	cn, err := c.getConnForNode(node)
+	logDebugSingleKey(ctx, methodName, node, key)
+
+	cn, err := c.getConnForNode(ctx, node)
 	if err != nil {
 		return nil, err
 	}
 	return c.store(cn, storeMode.Resolve(), key, exp, c.getOpaque(), body)
 }
 
-func (c *Client) store(cn *conn, opcode OpCode, key string, exp, opaque uint32, body []byte) (*Response, error) {
+func (c *Client) store(cn *conn, opcode OpCode, key string, exp, opaque uint32, body []byte) (_ *Response, err error) {
 	req := &Request{
 		Opcode: opcode,
 		Key:    []byte(key),
@@ -452,6 +436,11 @@ func (c *Client) store(cn *conn, opcode OpCode, key string, exp, opaque uint32, 
 		Body:   body,
 	}
 	req.prepareExtras(exp, 0, 0)
+	defer func() {
+		if err == nil {
+			c.writeItemSizeDiagnostics("Store", req.Size())
+		}
+	}()
 	return c.send(cn, req)
 }
 
@@ -473,9 +462,10 @@ func (c *Client) send(cn *conn, req *Request) (resp *Response, err error) {
 }
 
 // Get is return an item for provided key.
-func (c *Client) Get(key string) (_ *Response, err error) {
+func (c *Client) Get(ctx context.Context, key string) (_ *Response, err error) {
+	const methodName = "Get"
 	timer := time.Now()
-	defer c.writeMethodDiagnostics("Get", timer, &err)
+	defer c.writeMethodDiagnostics(methodName, timer, &err)
 
 	if !legalKey(key) {
 		return nil, ErrMalformedKey
@@ -486,7 +476,9 @@ func (c *Client) Get(key string) (_ *Response, err error) {
 		return nil, ErrNoServers
 	}
 
-	cn, err := c.getConnForNode(node)
+	logDebugSingleKey(ctx, methodName, node, key)
+
+	cn, err := c.getConnForNode(ctx, node)
 	if err != nil {
 		return nil, err
 	}
@@ -503,9 +495,10 @@ func (c *Client) Get(key string) (_ *Response, err error) {
 
 // Delete is a deletes the element with the provided key.
 // If the element does not exist, an ErrCacheMiss error is returned.
-func (c *Client) Delete(key string) (_ *Response, err error) {
+func (c *Client) Delete(ctx context.Context, key string) (_ *Response, err error) {
+	const methodName = "Delete"
 	timer := time.Now()
-	defer c.writeMethodDiagnostics("Delete", timer, &err)
+	defer c.writeMethodDiagnostics(methodName, timer, &err)
 
 	if !legalKey(key) {
 		return nil, ErrMalformedKey
@@ -516,7 +509,9 @@ func (c *Client) Delete(key string) (_ *Response, err error) {
 		return nil, ErrNoServers
 	}
 
-	cn, err := c.getConnForNode(node)
+	logDebugSingleKey(ctx, methodName, node, key)
+
+	cn, err := c.getConnForNode(ctx, node)
 	if err != nil {
 		return nil, err
 	}
@@ -533,9 +528,10 @@ func (c *Client) Delete(key string) (_ *Response, err error) {
 
 // Delta is an atomically increments/decrements value by delta. The return value is
 // the new value after being incremented/decrements or an error.
-func (c *Client) Delta(deltaMode DeltaMode, key string, delta, initial uint64, exp uint32) (newValue uint64, err error) {
+func (c *Client) Delta(ctx context.Context, deltaMode DeltaMode, key string, delta, initial uint64, exp uint32) (newValue uint64, err error) {
+	const methodName = "Delta"
 	timer := time.Now()
-	defer c.writeMethodDiagnostics("Delta", timer, &err)
+	defer c.writeMethodDiagnostics(methodName, timer, &err)
 
 	if !legalKey(key) {
 		return 0, ErrMalformedKey
@@ -546,7 +542,9 @@ func (c *Client) Delta(deltaMode DeltaMode, key string, delta, initial uint64, e
 		return 0, ErrNoServers
 	}
 
-	cn, err := c.getConnForNode(node)
+	logDebugSingleKey(ctx, methodName, node, key)
+
+	cn, err := c.getConnForNode(ctx, node)
 	if err != nil {
 		return 0, err
 	}
@@ -567,9 +565,10 @@ func (c *Client) Delta(deltaMode DeltaMode, key string, delta, initial uint64, e
 
 // Append is an appends/prepends the given item to the existing item, if a value already
 // exists for its key. ErrNotStored is returned if that condition is not met.
-func (c *Client) Append(appendMode AppendMode, key string, data []byte) (_ *Response, err error) {
+func (c *Client) Append(ctx context.Context, appendMode AppendMode, key string, data []byte) (_ *Response, err error) {
+	const methodName = "Append"
 	timer := time.Now()
-	defer c.writeMethodDiagnostics("Append", timer, &err)
+	defer c.writeMethodDiagnostics(methodName, timer, &err)
 
 	if !legalKey(key) {
 		return nil, ErrMalformedKey
@@ -580,7 +579,9 @@ func (c *Client) Append(appendMode AppendMode, key string, data []byte) (_ *Resp
 		return nil, ErrNoServers
 	}
 
-	cn, err := c.getConnForNode(node)
+	logDebugSingleKey(ctx, methodName, node, key)
+
+	cn, err := c.getConnForNode(ctx, node)
 	if err != nil {
 		return nil, err
 	}
@@ -597,94 +598,121 @@ func (c *Client) Append(appendMode AppendMode, key string, data []byte) (_ *Resp
 }
 
 // FlushAll is a deletes all items in the cache.
-func (c *Client) FlushAll(exp uint32) (err error) {
+// A non-nil error returned by Join implements the Unwrap() []error method.
+func (c *Client) FlushAll(ctx context.Context, exp uint32) (err error) {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	timerMethod := time.Now()
 	defer c.writeMethodDiagnostics("FlushAll", timerMethod, &err)
 
+	type retElem struct {
+		err error
+	}
+
 	var (
-		wg       sync.WaitGroup
-		mu       sync.Mutex
-		multiErr error
+		wg = new(sync.WaitGroup)
 
 		nodes = c.hr.GetAllNodes()
+		retCh = make(chan retElem, len(nodes))
 	)
-
-	addToMultiErr := func(e error) {
-		mu.Lock()
-		defer mu.Unlock()
-		multiErr = errors.Join(multiErr, e)
-	}
 
 	for _, node := range nodes {
 		wg.Add(1)
-		go func(node any) {
+		go func(node any, exp uint32) {
 			defer wg.Done()
 
-			var cn *conn
-			cn, err = c.getConnForNode(node)
-			if err != nil {
-				addToMultiErr(err)
+			if ctx.Err() != nil {
 				return
 			}
-			defer cn.condRelease(&err)
+
+			var cnErr error
+			cn, nErr := c.getConnForNode(ctx, node)
+			if nErr != nil {
+				retCh <- retElem{err: nErr}
+				return
+			}
+			defer cn.condRelease(&cnErr)
 
 			req := &Request{
 				Opcode: FLUSH,
 			}
 			req.prepareExtras(exp, 0, 0)
 
-			_, err = transmitRequest(cn.wrtBuf, req)
-			if err != nil {
+			_, cnErr = transmitRequest(cn.wrtBuf, req)
+			if cnErr != nil {
 				cn.healthy = false
+				retCh <- retElem{err: cnErr}
 				return
 			}
 
-			if err = cn.wrtBuf.Flush(); err != nil {
-				logger.Errorf("%s. %s", ErrServerError.Error(), err.Error())
+			if cnErr = cn.wrtBuf.Flush(); cnErr != nil {
+				logger.Errorf("%s. %s", ErrServerError.Error(), cnErr.Error())
 				return
 			}
 
-			_, _, err = getResponse(cn.rc, cn.hdrBuf)
-			if err != nil {
-				if isFatal(err) {
+			_, _, cnErr = getResponse(cn.rc, cn.hdrBuf)
+			if cnErr != nil {
+				if isFatal(cnErr) {
 					cn.healthy = false
+					logger.Errorf("%s. %s", ErrServerError.Error(), cnErr.Error())
 					return
 				}
-				addToMultiErr(err)
 			}
-		}(node)
+		}(node, exp)
 	}
 
-	wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+	}
+
+	var multiErr error
+	close(retCh)
+	for el := range retCh {
+		if el.err != nil {
+			multiErr = errors.Join(multiErr, el.err)
+		}
+	}
 
 	return multiErr
 }
 
-// MultiGet is a batch version of Get. The returned map from keys to
+// MultiGet is a batch version of Get.The returned map from keys to
 // items may have fewer elements than the input slice, due to memcached
-// cache misses. Each key must be at most 250 bytes in length.
+// cache misses.Each key must be at most 250 bytes in length.
 // If no error is returned, the returned map will also be non-nil.
-func (c *Client) MultiGet(keys []string) (_ map[string][]byte, err error) {
-	var (
-		wg sync.WaitGroup
-		mu sync.Mutex
+// A non-nil error returned by Join implements the Unwrap() []error method.
+func (c *Client) MultiGet(ctx context.Context, keys []string) (_ map[string][]byte, err error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 
-		ret = make(map[string][]byte, len(keys))
-	)
+	ret := make(map[string][]byte, len(keys))
 	if len(keys) == 0 {
 		return ret, nil
 	}
 
+	const methodName = "MultiGet"
 	timerMethod := time.Now()
-	defer c.writeMethodDiagnostics("MultiGet", timerMethod, &err)
+	defer c.writeMethodDiagnostics(methodName, timerMethod, &err)
 
 	if len(keys) == 1 {
 		var res *Response
-		res, err = c.Get(keys[0])
+		res, err = c.Get(ctx, keys[0])
 		if res != nil {
-			if res.Status == SUCCESS {
+			switch res.Status {
+			case SUCCESS:
 				ret[keys[0]] = res.Body
-			} else if res.Status == KEY_ENOENT {
+			case KEY_ENOENT:
 				// MultiGet never returns a ENOENT
 				err = nil
 			}
@@ -692,34 +720,37 @@ func (c *Client) MultiGet(keys []string) (_ map[string][]byte, err error) {
 		return ret, err
 	}
 
-	var (
-		once        sync.Once
-		singleError error
-	)
-
-	addToRet := func(key string, body []byte) {
-		mu.Lock()
-		defer mu.Unlock()
-		ret[key] = body
+	type retElem struct {
+		key  string
+		body []byte
+		err  error
 	}
 
-	nodes, err := getNodesForKeys(c.hr, keys)
+	var (
+		wg    = new(sync.WaitGroup)
+		retCh = make(chan retElem, len(keys))
+	)
+
+	nodes, err := getNodesForKeys(ctx, c.hr, keys)
 	if err != nil {
 		return ret, err
 	}
+
+	logDebugNodes(ctx, methodName, nodes)
 
 	for node, ks := range nodes {
 		wg.Add(1)
 		go func(node any, keys []string) {
 			defer wg.Done()
 
-			var cnErr error
+			if ctx.Err() != nil {
+				return
+			}
 
-			cn, nErr := c.getConnForNode(node)
+			var cnErr error
+			cn, nErr := c.getConnForNode(ctx, node)
 			if nErr != nil {
-				once.Do(func() {
-					singleError = nErr
-				})
+				retCh <- retElem{err: nErr}
 				return
 			}
 			defer cn.condRelease(&cnErr)
@@ -727,6 +758,10 @@ func (c *Client) MultiGet(keys []string) (_ map[string][]byte, err error) {
 			idToKey := make(map[uint32]string, len(keys))
 
 			for _, key := range keys {
+				if ctx.Err() != nil {
+					return
+				}
+
 				opaqueGet := c.getOpaque()
 				req := &Request{
 					Opcode: GETQ,
@@ -738,6 +773,7 @@ func (c *Client) MultiGet(keys []string) (_ map[string][]byte, err error) {
 				_, cnErr = transmitRequest(cn.wrtBuf, req)
 				if cnErr != nil {
 					cn.healthy = false
+					retCh <- retElem{err: cnErr}
 					return
 				}
 
@@ -754,19 +790,25 @@ func (c *Client) MultiGet(keys []string) (_ map[string][]byte, err error) {
 			_, cnErr = transmitRequest(cn.wrtBuf, req)
 			if cnErr != nil {
 				cn.healthy = false
+				retCh <- retElem{err: cnErr}
 				return
 			}
 
-			if cnErr = cn.wrtBuf.Flush(); err != nil {
+			if cnErr = cn.wrtBuf.Flush(); cnErr != nil {
 				logger.Errorf("%s. %s", ErrServerError.Error(), cnErr.Error())
 				return
 			}
 
 			for {
+				if ctx.Err() != nil {
+					return
+				}
+
 				var resp *Response
 				resp, _, cnErr = getResponse(cn.rc, cn.hdrBuf)
 				if isFatal(cnErr) {
 					cn.healthy = false
+					logger.Errorf("%s. %s", ErrServerError.Error(), cnErr.Error())
 					return
 				}
 
@@ -775,64 +817,87 @@ func (c *Client) MultiGet(keys []string) (_ map[string][]byte, err error) {
 				}
 
 				if key, ok := idToKey[resp.Opaque]; ok && cnErr == nil {
-					addToRet(key, resp.Body)
+					retCh <- retElem{key, resp.Body, nil}
 				}
 			}
 		}(node, ks)
 	}
 
-	wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 
-	return ret, singleError
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-done:
+	}
+
+	var multiErr error
+	close(retCh)
+	for el := range retCh {
+		if el.err != nil {
+			multiErr = errors.Join(multiErr, el.err)
+		} else {
+			ret[el.key] = el.body
+		}
+	}
+
+	return ret, multiErr
 }
 
 // MultiStore is a batch version of Store.
 // Writes the provided items with expiration.
-func (c *Client) MultiStore(storeMode StoreMode, items map[string][]byte, exp uint32) (err error) {
+//
+// A non-nil error returned by Join implements the Unwrap() []error method.
+func (c *Client) MultiStore(ctx context.Context, storeMode StoreMode, items map[string][]byte, exp uint32) (err error) {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	if len(items) == 0 {
 		return nil
 	}
 
+	const methodName = "MultiStore"
 	timerMethod := time.Now()
-	defer c.writeMethodDiagnostics("MultiStore", timerMethod, &err)
+	defer c.writeMethodDiagnostics(methodName, timerMethod, &err)
+
+	type retElem struct {
+		err error
+	}
 
 	var (
-		wg       sync.WaitGroup
-		muMErr   sync.Mutex
-		multiErr error
+		wg    = new(sync.WaitGroup)
+		retCh = make(chan retElem, len(items))
 	)
-
-	addToMultiErr := func(e error) {
-		muMErr.Lock()
-		defer muMErr.Unlock()
-		multiErr = errors.Join(multiErr, e)
-	}
-
-	var muItems sync.RWMutex
-	safeGetItems := func(key string) []byte {
-		muItems.RLock()
-		defer muItems.RUnlock()
-		return items[key]
-	}
 
 	quietCode := storeMode.Resolve().changeOnQuiet(SETQ)
 
 	keys := maps.Keys(items)
-	nodes, err := getNodesForKeys(c.hr, keys)
+	nodes, err := getNodesForKeys(ctx, c.hr, keys)
 	if err != nil {
 		return err
 	}
 
+	logDebugNodes(ctx, methodName, nodes)
+
 	for node, ks := range nodes {
+		kv := utils.PickByKeys(items, ks)
 		wg.Add(1)
-		go func(node any, keys []string, exp uint32) {
+		go func(node any, keys []string, itemsByNode map[string][]byte, exp uint32) {
 			defer wg.Done()
 
-			var cnErr error
+			if ctx.Err() != nil {
+				return
+			}
 
-			cn, nErr := c.getConnForNode(node)
+			var cnErr error
+			cn, nErr := c.getConnForNode(ctx, node)
 			if nErr != nil {
-				addToMultiErr(nErr)
+				retCh <- retElem{err: nErr}
 				return
 			}
 			defer cn.condRelease(&cnErr)
@@ -840,20 +905,27 @@ func (c *Client) MultiStore(storeMode StoreMode, items map[string][]byte, exp ui
 			idToKey := make(map[uint32]string, len(keys))
 
 			for _, key := range keys {
+				if ctx.Err() != nil {
+					return
+				}
+
 				opaqueStore := c.getOpaque()
 				req := &Request{
 					Opcode: quietCode,
 					Opaque: opaqueStore,
 					Key:    []byte(key),
-					Body:   safeGetItems(key),
+					Body:   itemsByNode[key],
 				}
 				req.prepareExtras(exp, 0, 0)
 
 				_, cnErr = transmitRequest(cn.wrtBuf, req)
 				if cnErr != nil {
 					cn.healthy = false
+					retCh <- retElem{err: cnErr}
 					return
 				}
+
+				c.writeItemSizeDiagnostics(methodName, req.Size())
 
 				idToKey[opaqueStore] = key
 			}
@@ -868,19 +940,25 @@ func (c *Client) MultiStore(storeMode StoreMode, items map[string][]byte, exp ui
 			_, cnErr = transmitRequest(cn.wrtBuf, req)
 			if cnErr != nil {
 				cn.healthy = false
+				retCh <- retElem{err: cnErr}
 				return
 			}
 
-			if cnErr = cn.wrtBuf.Flush(); err != nil {
+			if cnErr = cn.wrtBuf.Flush(); cnErr != nil {
 				logger.Errorf("%s. %s", ErrServerError.Error(), cnErr.Error())
 				return
 			}
 
 			for {
+				if ctx.Err() != nil {
+					return
+				}
+
 				var resp *Response
 				resp, _, cnErr = getResponse(cn.rc, cn.hdrBuf)
 				if isFatal(cnErr) {
 					cn.healthy = false
+					retCh <- retElem{err: cnErr}
 					return
 				}
 
@@ -890,57 +968,84 @@ func (c *Client) MultiStore(storeMode StoreMode, items map[string][]byte, exp ui
 
 				if key, ok := idToKey[resp.Opaque]; ok {
 					if resp.Status != SUCCESS {
-						addToMultiErr(fmt.Errorf("%w. Error for key - %s", cnErr, key))
+						retCh <- retElem{err: fmt.Errorf("status - %s ; error - %w ; key - %s", resp.Status, resp, key)}
 					}
 				}
 			}
-		}(node, ks, exp)
+		}(node, ks, kv, exp)
 	}
 
-	wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+	}
+
+	var multiErr error
+	close(retCh)
+	for el := range retCh {
+		if el.err != nil {
+			multiErr = errors.Join(multiErr, el.err)
+		}
+	}
 
 	return multiErr
 }
 
 // MultiDelete is a batch version of Delete.
 // Deletes the items with the provided keys.
+//
 // If there is a key in the provided keys that is missing in the cache,
 // the ErrCacheMiss error is ignored.
-func (c *Client) MultiDelete(keys []string) (err error) {
+// A non-nil error returned by Join implements the Unwrap() []error method.
+func (c *Client) MultiDelete(ctx context.Context, keys []string) (err error) {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	if len(keys) == 0 {
 		return nil
 	}
 
+	const methodName = "MultiDelete"
 	timerMethod := time.Now()
-	defer c.writeMethodDiagnostics("MultiDelete", timerMethod, &err)
+	defer c.writeMethodDiagnostics(methodName, timerMethod, &err)
 
-	var (
-		wg       sync.WaitGroup
-		mu       sync.Mutex
-		multiErr error
-	)
-
-	addToMultiErr := func(e error) {
-		mu.Lock()
-		defer mu.Unlock()
-		multiErr = errors.Join(multiErr, e)
+	type retElem struct {
+		err error
 	}
 
-	nodes, err := getNodesForKeys(c.hr, keys)
+	var (
+		wg    = new(sync.WaitGroup)
+		retCh = make(chan retElem, len(keys))
+	)
+
+	nodes, err := getNodesForKeys(ctx, c.hr, keys)
 	if err != nil {
 		return err
 	}
+
+	logDebugNodes(ctx, methodName, nodes)
 
 	for node, ks := range nodes {
 		wg.Add(1)
 		go func(node any, keys []string) {
 			defer wg.Done()
 
-			var cnErr error
+			if ctx.Err() != nil {
+				return
+			}
 
-			cn, nErr := c.getConnForNode(node)
+			var cnErr error
+			cn, nErr := c.getConnForNode(ctx, node)
 			if nErr != nil {
-				addToMultiErr(nErr)
+				retCh <- retElem{err: nErr}
 				return
 			}
 			defer cn.condRelease(&cnErr)
@@ -948,6 +1053,10 @@ func (c *Client) MultiDelete(keys []string) (err error) {
 			idToKey := make(map[uint32]string, len(keys))
 
 			for _, key := range keys {
+				if ctx.Err() != nil {
+					return
+				}
+
 				opaqueDel := c.getOpaque()
 				req := &Request{
 					Opcode: DELETEQ,
@@ -959,6 +1068,7 @@ func (c *Client) MultiDelete(keys []string) (err error) {
 				_, cnErr = transmitRequest(cn.wrtBuf, req)
 				if cnErr != nil {
 					cn.healthy = false
+					retCh <- retElem{err: cnErr}
 					return
 				}
 
@@ -975,19 +1085,25 @@ func (c *Client) MultiDelete(keys []string) (err error) {
 			_, cnErr = transmitRequest(cn.wrtBuf, req)
 			if cnErr != nil {
 				cn.healthy = false
+				retCh <- retElem{err: cnErr}
 				return
 			}
 
-			if cnErr = cn.wrtBuf.Flush(); err != nil {
+			if cnErr = cn.wrtBuf.Flush(); cnErr != nil {
 				logger.Errorf("%s. %s", ErrServerError.Error(), cnErr.Error())
 				return
 			}
 
 			for {
+				if ctx.Err() != nil {
+					return
+				}
+
 				var resp *Response
 				resp, _, cnErr = getResponse(cn.rc, cn.hdrBuf)
 				if isFatal(cnErr) {
 					cn.healthy = false
+					retCh <- retElem{err: cnErr}
 					return
 				}
 
@@ -997,32 +1113,56 @@ func (c *Client) MultiDelete(keys []string) (err error) {
 
 				if key, ok := idToKey[resp.Opaque]; ok {
 					if resp.Status != SUCCESS && resp.Status != KEY_ENOENT {
-						addToMultiErr(fmt.Errorf("%w. Error for key - %s", cnErr, key))
+						retCh <- retElem{err: fmt.Errorf("status - %s ; error - %w ; key - %s", resp.Status, resp, key)}
 					}
 				}
 			}
 		}(node, ks)
 	}
 
-	wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+	}
+
+	var multiErr error
+	close(retCh)
+	for el := range retCh {
+		if el.err != nil {
+			multiErr = errors.Join(multiErr, el.err)
+		}
+	}
 
 	return multiErr
 }
 
 // CloseAllConns is close all opened connection per shards.
 // Once closed, resources should be released.
-func (c *Client) CloseAllConns() {
+func (c *Client) CloseAllConns(ctx context.Context) error {
 	c.fmu.Lock()
 	defer c.fmu.Unlock()
 
 	for addr, connPool := range c.freeConns {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
 		connPool.Destroy()
 		delete(c.freeConns, addr)
 	}
+
+	return nil
 }
 
 // CloseAvailableConnsInAllShardPools - removes the specified number of connections from the pools of all shards.
-func (c *Client) CloseAvailableConnsInAllShardPools(numOfClose int) int {
+func (c *Client) CloseAvailableConnsInAllShardPools(ctx context.Context, numOfClose int) (int, error) {
 	var closed int
 
 	c.fmu.Lock()
@@ -1031,13 +1171,18 @@ func (c *Client) CloseAvailableConnsInAllShardPools(numOfClose int) int {
 	for _, p := range c.freeConns {
 		for i := 0; i < numOfClose; i++ {
 			if connRaw, ok := p.Pop(); ok {
+
+				if ctx.Err() != nil {
+					return closed, ctx.Err()
+				}
+
 				p.Close(connRaw)
 				closed++
 			}
 		}
 	}
 
-	return closed
+	return closed, nil
 }
 
 func (c *Client) writeMethodDiagnostics(methodName string, timer time.Time, err *error) {
@@ -1048,14 +1193,22 @@ func (c *Client) writeMethodDiagnostics(methodName string, timer time.Time, err 
 	observeMethodDurationSeconds(methodName, time.Since(timer).Seconds(), *err == nil)
 }
 
-func (c *Client) authenticate(cn *conn) (ok bool) {
+func (c *Client) writeItemSizeDiagnostics(methodName string, size int) {
+	if methodName == "" || c.disableMemcachedDiagnostic {
+		return
+	}
+
+	observeObjectSizeBytes(methodName, float64(size))
+}
+
+func (c *Client) authenticate(cn *conn) (ok bool, err error) {
 	req := &Request{
 		Key:  []byte(SaslMechanism),
 		Body: c.authData,
 	}
 
 	req.Opcode = SASL_AUTH
-	_, err := transmitRequest(cn.wrtBuf, req)
+	_, err = transmitRequest(cn.wrtBuf, req)
 	if err != nil {
 		return
 	}
@@ -1065,17 +1218,20 @@ func (c *Client) authenticate(cn *conn) (ok bool) {
 	}
 
 	resp, _, err := getResponse(cn.rc, cn.hdrBuf)
-	if err == nil {
-		return true
+	if errors.Is(err, ErrNoServers) {
+		return false, err
 	}
-	if err != nil && resp.Status != FURTHER_AUTH {
-		logger.Errorf("%s: Error from sasl auth - %v", libPrefix, resp)
-		return
+	if err == nil {
+		return true, nil
+	}
+	if resp != nil && resp.Status != FURTHER_AUTH {
+		return false, fmt.Errorf("error from sasl auth - %s", resp.Error())
 	}
 
 	req.Opcode = SASL_STEP
 	_, err = transmitRequest(cn.wrtBuf, req)
 	if err != nil {
+		logger.Errorf("%s, %s", ErrServerError.Error(), err.Error())
 		return
 	}
 
@@ -1086,10 +1242,11 @@ func (c *Client) authenticate(cn *conn) (ok bool) {
 	}
 
 	if err = cn.wrtBuf.Flush(); err != nil {
+		logger.Errorf("%s, %s", ErrServerError.Error(), err.Error())
 		return
 	}
 
-	return true
+	return true, nil
 }
 
 func legalKey(key string) bool {
@@ -1105,10 +1262,14 @@ func legalKey(key string) bool {
 }
 
 // getNodesForKeys return a map where key is a node and value is a suitable keys
-func getNodesForKeys(hr consistenthash.ConsistentHash, keys []string) (map[any][]string, error) {
+func getNodesForKeys(ctx context.Context, hr consistenthash.ConsistentHash, keys []string) (map[any][]string, error) {
 	resp := make(map[any][]string, hr.GetNodesCount())
 
 	for _, key := range keys {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		if !legalKey(key) {
 			return nil, fmt.Errorf("%w. Invalid key - %v", ErrMalformedKey, key)
 		}

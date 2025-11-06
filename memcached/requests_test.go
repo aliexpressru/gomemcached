@@ -4,7 +4,7 @@ package memcached
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"reflect"
 	"testing"
 )
@@ -95,7 +95,7 @@ func TestEncodingRequestWithLargeBody(t *testing.T) {
 		Opaque: 7242,
 		Extras: []byte{1, 2, 3, 4},
 		Key:    []byte("somekey"),
-		Body:   make([]byte, 256),
+		Body:   make([]byte, BUF_LEN),
 	}
 
 	buf := &bytes.Buffer{}
@@ -113,7 +113,7 @@ func TestEncodingRequestWithLargeBody(t *testing.T) {
 		0x0, 0x0, 0x0, 0x0, 0x37, 0xef, 0x3a, 0x35, // CAS
 		1, 2, 3, 4, // extras
 		's', 'o', 'm', 'e', 'k', 'e', 'y',
-	}, make([]byte, 256)...)
+	}, make([]byte, BUF_LEN)...)
 
 	if len(got) != req.Size() {
 		t.Fatalf("Expected %v bytes, got %v", got,
@@ -177,13 +177,13 @@ func BenchmarkEncodingRequest1Extra(b *testing.B) {
 
 func TestRequestTransmit(t *testing.T) {
 	res := Request{Key: []byte("thekey")}
-	_, err := res.Transmit(ioutil.Discard)
+	_, err := res.Transmit(io.Discard)
 	if err != nil {
 		t.Errorf("Error sending small request: %v", err)
 	}
 
-	res.Body = make([]byte, 256)
-	_, err = res.Transmit(ioutil.Discard)
+	res.Body = make([]byte, BUF_LEN)
+	_, err = res.Transmit(io.Discard)
 	if err != nil {
 		t.Errorf("Error sending large request thing: %v", err)
 	}

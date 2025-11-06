@@ -88,7 +88,7 @@ const (
 	BODY_LEN = 128
 )
 
-// Mapping of OpCode -> name of command (not exhaustive)
+// CommandNames is mapping of OpCode -> name of command (not exhaustive)
 var CommandNames map[OpCode]string
 
 var StatusNames map[Status]string

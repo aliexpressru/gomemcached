@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"reflect"
 	"testing"
 )
@@ -104,7 +104,7 @@ func TestEncodingResponseWithLargeBody(t *testing.T) {
 		Cas:    938424885,
 		Extras: []byte{1, 2, 3, 4},
 		Key:    []byte("somekey"),
-		Body:   make([]byte, 256),
+		Body:   make([]byte, BUF_LEN),
 	}
 
 	buf := &bytes.Buffer{}
@@ -122,7 +122,7 @@ func TestEncodingResponseWithLargeBody(t *testing.T) {
 		0x0, 0x0, 0x0, 0x0, 0x37, 0xef, 0x3a, 0x35, // CAS
 		1, 2, 3, 4, // extras
 		's', 'o', 'm', 'e', 'k', 'e', 'y',
-	}, make([]byte, 256)...)
+	}, make([]byte, BUF_LEN)...)
 
 	if len(got) != res.Size() {
 		t.Fatalf("Expected %v bytes, got %v", got,
@@ -211,13 +211,13 @@ func TestIsFatal(t *testing.T) {
 
 func TestResponseTransmit(t *testing.T) {
 	res := Response{Key: []byte("thekey")}
-	_, err := res.Transmit(ioutil.Discard)
+	_, err := res.Transmit(io.Discard)
 	if err != nil {
 		t.Errorf("Error sending small response: %v", err)
 	}
 
-	res.Body = make([]byte, 256)
-	_, err = res.Transmit(ioutil.Discard)
+	res.Body = make([]byte, BUF_LEN)
+	_, err = res.Transmit(io.Discard)
 	if err != nil {
 		t.Errorf("Error sending large response thing: %v", err)
 	}

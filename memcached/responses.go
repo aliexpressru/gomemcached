@@ -176,7 +176,7 @@ func (r *Response) Receive(rd io.Reader, hdrBytes []byte) (int, error) {
 	}
 
 	if hdrBytes[0] != RES_MAGIC && hdrBytes[0] != REQ_MAGIC {
-		return n, fmt.Errorf("Bad magic: 0x%02x", hdrBytes[0])
+		return n, fmt.Errorf("bad magic: 0x%02x", hdrBytes[0])
 	}
 
 	klen := int(binary.BigEndian.Uint16(hdrBytes[2:4]))

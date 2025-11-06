@@ -1,3 +1,4 @@
+// nolint
 package memcached
 
 import (
@@ -213,10 +214,17 @@ func Test_nodeIsDead(t *testing.T) {
 	logger.DisableLogger()
 	addr := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 12345}
 
-	mockNetworkError := new(MockNetworkOperations)
-	client := &Client{nw: &network{
-		dialTimeout: mockNetworkError.DialTimeout,
-	}}
+	var (
+		mockConn         = new(mockReadWriteCloser)
+		mockNetworkError = new(mockNetworkOperations)
+		client           = &Client{nw: &network{
+			dialTimeout: mockNetworkError.DialTimeout,
+		}}
+	)
+
+	mockConn.On("Read", mock.Anything).Return(mock.Anything, nil)
+	mockConn.On("Write", mock.Anything).Return(mock.Anything, nil)
+	mockConn.On("Close", mock.Anything).Return(nil)
 
 	assert.True(t, client.nodeIsDead("wrongarrd.r"), "nodeIsDead: wrong addr should be return true")
 
@@ -230,7 +238,7 @@ func Test_nodeIsDead(t *testing.T) {
 
 	mockNetworkError.AssertCalled(t, "DialTimeout", addr.Network(), addr.String(), client.netTimeout())
 
-	mockNetworkRetry := new(MockNetworkOperations)
+	mockNetworkRetry := new(mockNetworkOperations)
 	client = &Client{nw: &network{
 		dialTimeout: mockNetworkRetry.DialTimeout,
 	}}
@@ -245,12 +253,12 @@ func Test_nodeIsDead(t *testing.T) {
 	// int(DefaultRetryCountForConn)+1 - the default number of retries plus the first execution.
 	mockNetworkRetry.AssertNumberOfCalls(t, "DialTimeout", int(DefaultRetryCountForConn)+1)
 
-	mockNetworkSuccess := new(MockNetworkOperations)
+	mockNetworkSuccess := new(mockNetworkOperations)
 	client = &Client{nw: &network{
 		dialTimeout: mockNetworkSuccess.DialTimeout,
 	}}
 
-	mockNetworkSuccess.On("DialTimeout", addr.Network(), addr.String(), client.netTimeout()).Return(&FakeConn{}, nil)
+	mockNetworkSuccess.On("DialTimeout", addr.Network(), addr.String(), client.netTimeout()).Return(mockConn, nil)
 
 	result = client.nodeIsDead(addr)
 
@@ -261,7 +269,9 @@ func Test_nodeIsDead(t *testing.T) {
 
 func Test_initNodesProvider(t *testing.T) {
 	var (
-		mockNetworkErr = new(MockNetworkOperations)
+		mockNetworkErr = new(mockNetworkOperations)
+
+		mockConn = new(mockReadWriteCloser)
 
 		period = 10 * time.Millisecond
 
@@ -281,8 +291,12 @@ func Test_initNodesProvider(t *testing.T) {
 		nodeRBPeriod: period,
 	}
 
+	mockConn.On("Read", mock.Anything).Return(mock.Anything, nil)
+	mockConn.On("Write", mock.Anything).Return(mock.Anything, nil)
+	mockConn.On("Close", mock.Anything).Return(nil)
+
 	mockNetworkErr.On("LookupHost", cl.cfg.HeadlessServiceAddress).Return(nil, expectedErr)
-	mockNetworkErr.On("Dial", mock.Anything, mock.Anything).Return(&FakeConn{}, nil)
+	mockNetworkErr.On("Dial", mock.Anything, mock.Anything).Return(mockConn, nil)
 
 	cl.initNodesProvider()
 
@@ -296,7 +310,9 @@ func Test_initNodesProvider(t *testing.T) {
 
 func Test_checkNodesHealth(t *testing.T) {
 	var (
-		mockNetworkErr = new(MockNetworkOperations)
+		mockNetworkErr = new(mockNetworkOperations)
+
+		mockConn = new(mockReadWriteCloser)
 
 		expectedErr = errors.New("mocked dial error")
 	)
@@ -310,8 +326,12 @@ func Test_checkNodesHealth(t *testing.T) {
 		},
 	}
 
+	mockConn.On("Read", mock.Anything).Return(mock.Anything, nil)
+	mockConn.On("Write", mock.Anything).Return(mock.Anything, nil)
+	mockConn.On("Close", mock.Anything).Return(nil)
+
 	mockNetworkErr.On("LookupHost", cl.cfg.HeadlessServiceAddress).Return(nil, expectedErr)
-	mockNetworkErr.On("Dial", mock.Anything, mock.Anything).Return(&FakeConn{}, nil)
+	mockNetworkErr.On("Dial", mock.Anything, mock.Anything).Return(mockConn, nil)
 
 	cl.checkNodesHealth()
 
@@ -323,7 +343,7 @@ func Test_checkNodesHealth(t *testing.T) {
 		alreadyDeadNodes = []string{"127.0.0.4:12345", "127.0.0.5:12345"}
 		disableNodes     = []string{"127.0.0.6:12345"}
 
-		mockNetwork = new(MockNetworkOperations)
+		mockNetwork = new(mockNetworkOperations)
 	)
 
 	cl = &Client{
@@ -340,7 +360,7 @@ func Test_checkNodesHealth(t *testing.T) {
 
 	mockNetwork.On("Dial", "tcp", "127.0.0.2:12345").Return(nil, expectedErr).Once()
 	mockNetwork.On("Dial", "tcp", "127.0.0.4:12345").Return(nil, expectedErr).Once()
-	mockNetwork.On("Dial", mock.Anything, mock.Anything).Return(&FakeConn{}, nil)
+	mockNetwork.On("Dial", mock.Anything, mock.Anything).Return(mockConn, nil)
 
 	for _, node := range currentNodes {
 		addr, _ := utils.AddrRepr(node)
@@ -362,7 +382,9 @@ func Test_checkNodesHealth(t *testing.T) {
 
 func Test_rebuildNodes(t *testing.T) {
 	var (
-		mockNetworkErr = new(MockNetworkOperations)
+		mockNetworkErr = new(mockNetworkOperations)
+
+		mockConn = new(mockReadWriteCloser)
 
 		expectedErr = errors.New("mocked dial error")
 	)
@@ -376,8 +398,12 @@ func Test_rebuildNodes(t *testing.T) {
 		},
 	}
 
+	mockConn.On("Read", mock.Anything).Return(mock.Anything, nil)
+	mockConn.On("Write", mock.Anything).Return(mock.Anything, nil)
+	mockConn.On("Close", mock.Anything).Return(nil)
+
 	mockNetworkErr.On("LookupHost", cl.cfg.HeadlessServiceAddress).Return(nil, expectedErr)
-	mockNetworkErr.On("Dial", mock.Anything, mock.Anything).Return(&FakeConn{}, nil)
+	mockNetworkErr.On("Dial", mock.Anything, mock.Anything).Return(mockConn, nil)
 
 	cl.rebuildNodes()
 
@@ -389,10 +415,12 @@ func Test_rebuildNodes(t *testing.T) {
 		alreadyDeadNodes    = []string{"127.0.0.4:12345", "127.0.0.2:12345"}
 		expectedNodesInRing = []string{"127.0.0.1:12345", "127.0.0.3:12345", "127.0.0.5:12345"}
 
-		mockNetwork = new(MockNetworkOperations)
+		mockNetwork = new(mockNetworkOperations)
 	)
+
+	ctx := context.TODO()
 	cl = &Client{
-		ctx: context.TODO(),
+		ctx: ctx,
 		nw: &network{
 			dial:       mockNetwork.Dial,
 			lookupHost: mockNetwork.LookupHost,
@@ -406,7 +434,7 @@ func Test_rebuildNodes(t *testing.T) {
 	}
 
 	mockNetwork.On("LookupHost", cl.cfg.Servers).Return(currentNodes, nil)
-	mockNetwork.On("Dial", mock.Anything, mock.Anything).Return(&FakeConn{}, nil)
+	mockNetwork.On("Dial", mock.Anything, mock.Anything).Return(mockConn, nil)
 
 	cl.deadNodes = make(map[string]struct{})
 	for _, node := range alreadyDeadNodes {
@@ -423,7 +451,7 @@ func Test_rebuildNodes(t *testing.T) {
 	for i := 0; i < len(currentNodes)-1; i++ {
 		node, ok := cl.hr.Get(currentNodes[i])
 		require.Truef(t, ok, "Not found node (%s) in hash ring", currentNodes[i])
-		cn, err := cl.getConnForNode(node)
+		cn, err := cl.getConnForNode(ctx, node)
 		require.Nil(t, err, "getConnForNode try get conn")
 		cn.condRelease(new(error))
 	}
@@ -444,48 +472,4 @@ func Test_rebuildNodes(t *testing.T) {
 	for _, pool := range cl.freeConns {
 		assert.Equal(t, 0, pool.Len())
 	}
-}
-
-type MockNetworkOperations struct {
-	mock.Mock
-}
-
-func (m *MockNetworkOperations) Dial(network, address string) (net.Conn, error) {
-	args := m.Called(network, address)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(net.Conn), args.Error(1)
-}
-
-func (m *MockNetworkOperations) DialTimeout(network, address string, timeout time.Duration) (net.Conn, error) {
-	args := m.Called(network, address, timeout)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(net.Conn), args.Error(1)
-}
-
-func (m *MockNetworkOperations) LookupHost(host string) ([]string, error) {
-	args := m.Called(host)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]string), args.Error(1)
-}
-
-type FakeConn struct {
-	net.TCPConn
-}
-
-func (f *FakeConn) Read(_ []byte) (n int, err error) {
-	return 0, nil
-}
-
-func (f *FakeConn) Write(_ []byte) (n int, err error) {
-	return 0, nil
-}
-
-func (f *FakeConn) Close() error {
-	return nil
 }

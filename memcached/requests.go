@@ -224,7 +224,6 @@ func (r *Request) prepareExtras(expiration uint32, delta uint64, initVal uint64)
 		binary.BigEndian.PutUint32(r.Extras[4:], expiration)
 	case INCREMENT, INCREMENTQ, DECREMENT, DECREMENTQ:
 		/*
-
 		   Byte/     0       |       1       |       2       |       3       |
 		      /              |               |               |               |
 		     |0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|

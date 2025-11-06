@@ -1,6 +1,24 @@
-version: '3'
 services:
-  memcached:
-    image: memcached:latest
+  memcached_1:
+    image: bitnamilegacy/memcached:1.6.9
     ports:
       - "11211:11211"
+  memcached_2:
+    image: bitnamilegacy/memcached:1.6.9
+    ports:
+      - "11212:11211"
+  memcached_3:
+    image: bitnamilegacy/memcached:1.6.9
+    ports:
+      - "11213:11211"
+  memcached_4:
+    image: bitnamilegacy/memcached:1.6.9
+    ports:
+      - "11214:11211"
+  memcached_auth:
+    image: bitnamilegacy/memcached:1.6.9
+    ports:
+      - "11215:11211"
+    environment:
+      MEMCACHED_USERNAME: admin
+      MEMCACHED_PASSWORD: secret

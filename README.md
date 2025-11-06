@@ -9,7 +9,7 @@
 [![Godoc](https://godoc.org/github.com/aliexpressru/gomemcached?status.svg)](https://pkg.go.dev/github.com/aliexpressru/gomemcached)
 
 [![Gomemcached](https://goreportcard.com/badge/github.com/aliexpressru/gomemcached)](https://goreportcard.com/report/github.com/aliexpressru/gomemcached)
-![Coverage](https://img.shields.io/badge/Coverage-91.0%25-brightgreen)
+![Coverage](https://img.shields.io/badge/Coverage-90.9%25-brightgreen)
 
 [![Mentioned in Awesome Go](https://awesome.re/mentioned-badge.svg)](https://github.com/avelino/awesome-go?tab=readme-ov-file#nosql-database-drivers)
 </div>
@@ -19,6 +19,8 @@ ___
 ___
 
 ### Configuration
+
+Configuration is primarily done through environment variables:
 
 ```yaml
     - name: MEMCACHED_HEADLESS_SERVICE_ADDRESS
@@ -42,6 +44,7 @@ HeadlessServiceAddress:
     value: "127.0.0.1:11211,192.168.0.1:1234"
 ```
 
+> **Note:** Environment variables are the preferred configuration method, but can be overridden programmatically with `WithHeadlessServiceAddress()`, `WithServersList()`, and `WithMemcachedPort()` options.
 ___
 
 ### Usage
@@ -56,7 +59,7 @@ Initialization client and connected to memcached servers.
         return nil
     })
 ```
-[More examples](examples/main.go)
+[More examples](examples/usage_example.go)
 
 To use SASL specify option for InitFromEnv:
 
@@ -67,13 +70,76 @@ To use SASL specify option for InitFromEnv:
 Can use Options with InitFromEnv to customize the client to suit your needs. However, for basic use, it is recommended
 to use the default client implementation.
 
+#### Metrics
+
+The client automatically collects Prometheus metrics for method execution time and object sizes. By default, metrics are registered with `prometheus.DefaultRegisterer`. See [metrics.go](memcached/metrics.go) for implementation details.
+
+Available metrics:
+- `gomemcached_method_duration_seconds` - histogram of method execution times
+- `gomemcached_object_size_bytes` - histogram of object sizes being stored
+
+##### Default Usage
+
+Metrics are automatically registered with the default Prometheus registry:
+
+```go
+mcl, err := memcached.InitFromEnv(ctx)
+```
+
+##### Custom Prometheus Registry
+
+You can use a custom Prometheus registry for metric isolation or multi-tenancy:
+
+```go
+customRegistry := prometheus.NewRegistry()
+mcl, err := memcached.InitFromEnv(
+    ctx,
+    memcached.WithMetricsRegisterer(customRegistry),
+)
+```
+
+##### Custom Histogram Buckets
+
+Adjust histogram buckets to match your expected latency profile:
+
+```go
+// Default duration buckets (seconds): [0.0005, 0.001, 0.005, 0.007, 0.015, 0.05, 0.1, 0.2, 0.5, 1]
+customDurationBuckets := []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0}
+mcl, err := memcached.InitFromEnv(
+    ctx,
+    memcached.WithMetricsDurationBuckets(customDurationBuckets),
+)
+```
+
+Adjust object size buckets to match your typical data sizes:
+
+```go
+// Default size buckets (bytes): [10, 100, 1024, 10240, 51200, 102400, 524288, 1048576, 5242880, 10485760]
+// (10 bytes, 100 bytes, 1KB, 10KB, 50KB, 100KB, 512KB, 1MB, 5MB, 10MB)
+customSizeBuckets := []float64{1024, 10240, 102400, 1048576}  // 1KB, 10KB, 100KB, 1MB
+mcl, err := memcached.InitFromEnv(
+    ctx,
+    memcached.WithMetricsObjectSizeBuckets(customSizeBuckets),
+)
+```
+
+##### Disable Metrics
+
+To disable metrics collection entirely:
+
+```go
+memcached.InitFromEnv(ctx, memcached.WithDisableMemcachedDiagnostic())
+```
+
+See [custom_metrics_example.go](examples/custom_metrics_example.go) for more examples.
+
 ---
 
 ### Recommended Versions
 
 This project is developed and tested with the following recommended versions:
 
-- Go: 1.21 or higher
+- Go: 1.24 or higher
    - [Download Go](https://golang.org/dl/)
 
 - Memcached: 1.6.9 or higher

@@ -35,8 +35,8 @@ func DisableLogger() {
 	disableLogger.Store(true)
 }
 
-// LoggerIsDisable checks the status of the logger (true - disabled, false - enabled)
-func LoggerIsDisable() bool {
+// IsDisable checks the status of the logger (true - disabled, false - enabled)
+func IsDisable() bool {
 	return disableLogger.Load()
 }
 
@@ -81,70 +81,70 @@ func capitalLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 
 // Debug ...
 func Debug(args ...any) {
-	if log := GetLogger(); !LoggerIsDisable() {
+	if log := GetLogger(); !IsDisable() {
 		log.Debug(args...)
 	}
 }
 
 // Debugf ...
 func Debugf(format string, args ...any) {
-	if log := GetLogger(); !LoggerIsDisable() {
+	if log := GetLogger(); !IsDisable() {
 		log.Debugf(format, args...)
 	}
 }
 
 // Info ...
 func Info(args ...any) {
-	if log := GetLogger(); !LoggerIsDisable() {
+	if log := GetLogger(); !IsDisable() {
 		log.Info(args...)
 	}
 }
 
 // Infof ...
 func Infof(format string, args ...any) {
-	if log := GetLogger(); !LoggerIsDisable() {
+	if log := GetLogger(); !IsDisable() {
 		log.Infof(format, args...)
 	}
 }
 
 // Warn ...
 func Warn(args ...any) {
-	if log := GetLogger(); !LoggerIsDisable() {
+	if log := GetLogger(); !IsDisable() {
 		log.Warn(args...)
 	}
 }
 
 // Warnf ...
 func Warnf(format string, args ...any) {
-	if log := GetLogger(); !LoggerIsDisable() {
+	if log := GetLogger(); !IsDisable() {
 		log.Warnf(format, args...)
 	}
 }
 
 // Error ...
 func Error(args ...any) {
-	if log := GetLogger(); !LoggerIsDisable() {
+	if log := GetLogger(); !IsDisable() {
 		log.Error(args...)
 	}
 }
 
 // Errorf ...
 func Errorf(format string, args ...any) {
-	if log := GetLogger(); !LoggerIsDisable() {
+	if log := GetLogger(); !IsDisable() {
 		log.Errorf(format, args...)
 	}
 }
 
 // Fatal ...
 func Fatal(args ...any) {
-	if log := GetLogger(); !LoggerIsDisable() {
+	if log := GetLogger(); !IsDisable() {
 		log.Fatal(args...)
 	}
 }
 
 // Fatalf ...
 func Fatalf(format string, args ...any) {
-	if log := GetLogger(); !LoggerIsDisable() {
+	if log := GetLogger(); !IsDisable() {
 		log.Fatalf(format, args...)
 	}
 }

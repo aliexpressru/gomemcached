@@ -19,7 +19,7 @@ var (
 var _ ConnPool = (*Pool)(nil)
 
 type ConnPool interface {
-	Get() (any, error)
+	Get(ctx context.Context) (any, error)
 	Pop() (any, bool)
 	Put(v any)
 	Destroy()
@@ -29,7 +29,7 @@ type ConnPool interface {
 
 // Pool common connection pool
 type Pool struct {
-	ctx context.Context
+	gCtx context.Context
 
 	// newConn are functions for creating new connections if maxCap is not reached.
 	newConn func() (any, error)
@@ -56,7 +56,7 @@ func New(ctx context.Context, maxCap int32, acquireSemaTimeout time.Duration, ne
 	}
 
 	return &Pool{
-		ctx:           ctx,
+		gCtx:          ctx,
 		newConn:       newFunc,
 		closeConn:     closeFunc,
 		sema:          semaphore.NewWeighted(int64(maxCap)),
@@ -73,7 +73,7 @@ func (p *Pool) Len() int {
 }
 
 // Get returns a conn from store or create one
-func (p *Pool) Get() (any, error) {
+func (p *Pool) Get(ctx context.Context) (any, error) {
 	var aqTimeout bool
 
 	for {
@@ -83,11 +83,13 @@ func (p *Pool) Get() (any, error) {
 				return v, nil
 			}
 			return nil, ErrClosedPool
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		default:
 			if aqTimeout {
 				return nil, ErrAcquireTimeout
 			}
-			if cn, timeout, err := p.create(); timeout {
+			if cn, timeout, err := p.create(); timeout { //nolint:contextcheck
 				// last try get conn after timeout
 				aqTimeout = true
 				continue
@@ -143,7 +145,7 @@ func (p *Pool) Close(v any) {
 }
 
 func (p *Pool) create() (any, bool, error) {
-	ctx, cancel := context.WithTimeout(p.ctx, p.aqSemaTimeout)
+	ctx, cancel := context.WithTimeout(p.gCtx, p.aqSemaTimeout)
 	defer cancel()
 
 	if err := p.sema.Acquire(ctx, token); err != nil {
