@@ -88,8 +88,8 @@ func TestTransmitReq(t *testing.T) {
 		's', 'o', 'm', 'e', 'v', 'a', 'l', 'u', 'e',
 	}
 
-	if len(b.Bytes()) != req.Size() {
-		t.Fatalf("Expected %v bytes, got %v", req.Size(),
+	if len(b.Bytes()) != req.size() {
+		t.Fatalf("Expected %v bytes, got %v", req.size(),
 			len(b.Bytes()))
 	}
 
@@ -111,11 +111,11 @@ func BenchmarkTransmitReq(b *testing.B) {
 		Body:   []byte("somevalue"),
 	}
 
-	b.SetBytes(int64(req.Size()))
+	b.SetBytes(int64(req.size()))
 
 	for i := 0; i < b.N; i++ {
 		bout.Reset()
-		buf := bufio.NewWriterSize(bout, req.Size()*2)
+		buf := bufio.NewWriterSize(bout, req.size()*2)
 		_, err := transmitRequest(buf, &req)
 		if err != nil {
 			b.Fatalf("Error transmitting request: %v", err)
@@ -135,11 +135,11 @@ func BenchmarkTransmitReqLarge(b *testing.B) {
 		Body:   make([]byte, 24*1024),
 	}
 
-	b.SetBytes(int64(req.Size()))
+	b.SetBytes(int64(req.size()))
 
 	for i := 0; i < b.N; i++ {
 		bout.Reset()
-		buf := bufio.NewWriterSize(bout, req.Size()*2)
+		buf := bufio.NewWriterSize(bout, req.size()*2)
 		_, err := transmitRequest(buf, &req)
 		if err != nil {
 			b.Fatalf("Error transmitting request: %v", err)
@@ -157,7 +157,7 @@ func BenchmarkTransmitReqNull(b *testing.B) {
 		Body:   []byte("somevalue"),
 	}
 
-	b.SetBytes(int64(req.Size()))
+	b.SetBytes(int64(req.size()))
 
 	for i := 0; i < b.N; i++ {
 		_, err := transmitRequest(io.Discard, &req)
@@ -1205,7 +1205,7 @@ func TestAuthenticate(t *testing.T) {
 				Body:   authData,
 			}
 		)
-		mockWriter.On("Write", req.Bytes()).Return(req.Size(), nil)
+		mockWriter.On("Write", req.bytes()).Return(req.size(), nil)
 		mockWriter.On("Flush").Return(nil)
 
 		cn := &conn{
@@ -1239,7 +1239,7 @@ func TestAuthenticate(t *testing.T) {
 			Body:   authData,
 		}
 		// First write (SASL_AUTH) succeeds
-		mockWriter.On("Write", reqData.Bytes()).Return(reqData.Size(), nil).Once()
+		mockWriter.On("Write", reqData.bytes()).Return(reqData.size(), nil).Once()
 		// Flush succeeds
 		mockWriter.On("Flush").Return(nil).Once()
 		// Second write (SASL_STEP) fails
@@ -1253,7 +1253,7 @@ func TestAuthenticate(t *testing.T) {
 			Status: FURTHER_AUTH,
 			Opaque: 1,
 		}
-		respBytes := respData.Bytes()
+		respBytes := respData.bytes()
 		mockReader.On("Read", mock.Anything).Return(len(respBytes), nil).Once()
 
 		cn := &conn{
@@ -1291,7 +1291,7 @@ func TestAuthenticate(t *testing.T) {
 			Status: SUCCESS,
 			Opaque: 1,
 		}
-		respBytes := respData.Bytes()
+		respBytes := respData.bytes()
 		realReader := &mockReadWriteCloser{reader: bytes.NewReader(respBytes)}
 
 		cn := &conn{
@@ -1329,7 +1329,7 @@ func TestAuthenticate(t *testing.T) {
 			Status: ENOMEM, // Some error status
 			Opaque: 1,
 		}
-		respBytes := respData.Bytes()
+		respBytes := respData.bytes()
 		realReader := &mockReadWriteCloser{reader: bytes.NewReader(respBytes)}
 
 		cn := &conn{
@@ -1368,7 +1368,7 @@ func TestAuthenticate(t *testing.T) {
 			Status: FURTHER_AUTH,
 			Opaque: 1,
 		}
-		respBytes := respData.Bytes()
+		respBytes := respData.bytes()
 		realReader := &mockReadWriteCloser{reader: bytes.NewReader(respBytes)}
 
 		// Second SASL_STEP request succeeds
@@ -1409,7 +1409,7 @@ func TestAuthenticate(t *testing.T) {
 			Status: FURTHER_AUTH,
 			Opaque: 1,
 		}
-		respBytes := respData.Bytes()
+		respBytes := respData.bytes()
 		realReader := &mockReadWriteCloser{reader: bytes.NewReader(respBytes)}
 
 		// Second SASL_STEP request succeeds
@@ -1460,7 +1460,7 @@ func TestAuthenticate(t *testing.T) {
 		}
 
 		// Combine both responses
-		combinedData := append(authRespData.Bytes(), stepRespData.Bytes()...)
+		combinedData := append(authRespData.bytes(), stepRespData.bytes()...)
 		realReader := &mockReadWriteCloser{reader: bytes.NewReader(combinedData)}
 
 		// Second SASL_STEP request succeeds

@@ -30,7 +30,7 @@ func getResponse(s io.Reader, hdrBytes []byte) (rv *Response, n int, err error) 
 	}
 
 	rv = &Response{}
-	n, err = rv.Receive(s, hdrBytes)
+	n, err = rv.receive(s, hdrBytes)
 	if err == nil && rv.Status != SUCCESS {
 		err = wrapMemcachedResp(rv)
 	}
@@ -41,7 +41,7 @@ func transmitRequest(o io.Writer, req *Request) (int, error) {
 	if o == nil {
 		return 0, ErrNoServers
 	}
-	n, err := req.Transmit(o)
+	n, err := req.transmit(o)
 	return n, err
 }
 

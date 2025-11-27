@@ -30,8 +30,8 @@ type Request struct {
 	Extras, Key, Body []byte
 }
 
-// Size is a number of bytes this request requires.
-func (r *Request) Size() int {
+// size is a number of bytes this request requires.
+func (r *Request) size() int {
 	return HDR_LEN + len(r.Extras) + len(r.Key) + len(r.Body)
 }
 
@@ -101,8 +101,8 @@ func (r *Request) fillHeaderBytes(data []byte) int {
 	return pos
 }
 
-// HeaderBytes is a wire representation of the header (with the extras and key)
-func (r *Request) HeaderBytes() []byte {
+// headerBytes is a wire representation of the header (with the extras and key)
+func (r *Request) headerBytes() []byte {
 	data := make([]byte, HDR_LEN+len(r.Extras)+len(r.Key))
 
 	r.fillHeaderBytes(data)
@@ -110,9 +110,9 @@ func (r *Request) HeaderBytes() []byte {
 	return data
 }
 
-// Bytes is a wire representation of this request.
-func (r *Request) Bytes() []byte {
-	data := make([]byte, r.Size())
+// bytes is a wire representation of this request.
+func (r *Request) bytes() []byte {
+	data := make([]byte, r.size())
 
 	pos := r.fillHeaderBytes(data)
 
@@ -123,12 +123,12 @@ func (r *Request) Bytes() []byte {
 	return data
 }
 
-// Transmit is send this request message across a writer.
-func (r *Request) Transmit(w io.Writer) (n int, err error) {
+// transmit is send this request message across a writer.
+func (r *Request) transmit(w io.Writer) (n int, err error) {
 	if len(r.Body) < BODY_LEN {
-		n, err = w.Write(r.Bytes())
+		n, err = w.Write(r.bytes())
 	} else {
-		n, err = w.Write(r.HeaderBytes())
+		n, err = w.Write(r.headerBytes())
 		if err == nil {
 			m := 0
 			m, err = w.Write(r.Body)
@@ -138,8 +138,8 @@ func (r *Request) Transmit(w io.Writer) (n int, err error) {
 	return
 }
 
-// Receive a fill this Request with the data from this reader.
-func (r *Request) Receive(rd io.Reader, hdrBytes []byte) (int, error) {
+// receive a fill this Request with the data from this reader.
+func (r *Request) receive(rd io.Reader, hdrBytes []byte) (int, error) {
 	/*
 	   Byte/     0       |       1       |       2       |       3       |
 	      /              |               |               |               |

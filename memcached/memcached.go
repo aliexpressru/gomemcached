@@ -438,7 +438,7 @@ func (c *Client) store(cn *conn, opcode OpCode, key string, exp, opaque uint32, 
 	req.prepareExtras(exp, 0, 0)
 	defer func() {
 		if err == nil {
-			c.writeItemSizeDiagnostics("Store", req.Size())
+			c.writeItemSizeDiagnostics("Store", req.size())
 		}
 	}()
 	return c.send(cn, req)
@@ -925,7 +925,7 @@ func (c *Client) MultiStore(ctx context.Context, storeMode StoreMode, items map[
 					return
 				}
 
-				c.writeItemSizeDiagnostics(methodName, req.Size())
+				c.writeItemSizeDiagnostics(methodName, req.size())
 
 				idToKey[opaqueStore] = key
 			}

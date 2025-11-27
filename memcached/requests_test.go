@@ -18,7 +18,7 @@ func TestEncodingRequest(t *testing.T) {
 		Body:   []byte("somevalue"),
 	}
 
-	got := req.Bytes()
+	got := req.bytes()
 
 	expected := []byte{
 		REQ_MAGIC, byte(SET),
@@ -33,7 +33,7 @@ func TestEncodingRequest(t *testing.T) {
 		's', 'o', 'm', 'e', 'v', 'a', 'l', 'u', 'e',
 	}
 
-	if len(got) != req.Size() {
+	if len(got) != req.size() {
 		t.Fatalf("Expected %v bytes, got %v", got,
 			len(got))
 	}
@@ -60,7 +60,7 @@ func TestEncodingRequestWithExtras(t *testing.T) {
 	}
 
 	buf := &bytes.Buffer{}
-	req.Transmit(buf)
+	req.transmit(buf)
 	got := buf.Bytes()
 
 	expected := []byte{
@@ -77,7 +77,7 @@ func TestEncodingRequestWithExtras(t *testing.T) {
 		's', 'o', 'm', 'e', 'v', 'a', 'l', 'u', 'e',
 	}
 
-	if len(got) != req.Size() {
+	if len(got) != req.size() {
 		t.Fatalf("Expected %v bytes, got %v", got,
 			len(got))
 	}
@@ -99,7 +99,7 @@ func TestEncodingRequestWithLargeBody(t *testing.T) {
 	}
 
 	buf := &bytes.Buffer{}
-	req.Transmit(buf)
+	req.transmit(buf)
 	got := buf.Bytes()
 
 	expected := append([]byte{
@@ -115,7 +115,7 @@ func TestEncodingRequestWithLargeBody(t *testing.T) {
 		's', 'o', 'm', 'e', 'k', 'e', 'y',
 	}, make([]byte, BUF_LEN)...)
 
-	if len(got) != req.Size() {
+	if len(got) != req.size() {
 		t.Fatalf("Expected %v bytes, got %v", got,
 			len(got))
 	}
@@ -135,10 +135,10 @@ func BenchmarkEncodingRequest(b *testing.B) {
 		Body:   []byte("somevalue"),
 	}
 
-	b.SetBytes(int64(req.Size()))
+	b.SetBytes(int64(req.size()))
 
 	for i := 0; i < b.N; i++ {
-		req.Bytes()
+		req.bytes()
 	}
 }
 
@@ -151,10 +151,10 @@ func BenchmarkEncodingRequest0CAS(b *testing.B) {
 		Body:   []byte("somevalue"),
 	}
 
-	b.SetBytes(int64(req.Size()))
+	b.SetBytes(int64(req.size()))
 
 	for i := 0; i < b.N; i++ {
-		req.Bytes()
+		req.bytes()
 	}
 }
 
@@ -168,22 +168,22 @@ func BenchmarkEncodingRequest1Extra(b *testing.B) {
 		Body:   []byte("somevalue"),
 	}
 
-	b.SetBytes(int64(req.Size()))
+	b.SetBytes(int64(req.size()))
 
 	for i := 0; i < b.N; i++ {
-		req.Bytes()
+		req.bytes()
 	}
 }
 
 func TestRequestTransmit(t *testing.T) {
 	res := Request{Key: []byte("thekey")}
-	_, err := res.Transmit(io.Discard)
+	_, err := res.transmit(io.Discard)
 	if err != nil {
 		t.Errorf("Error sending small request: %v", err)
 	}
 
 	res.Body = make([]byte, BUF_LEN)
-	_, err = res.Transmit(io.Discard)
+	_, err = res.transmit(io.Discard)
 	if err != nil {
 		t.Errorf("Error sending large request thing: %v", err)
 	}
@@ -199,10 +199,10 @@ func TestReceiveRequest(t *testing.T) {
 		Body:   []byte("somevalue"),
 	}
 
-	data := req.Bytes()
+	data := req.bytes()
 
 	req2 := Request{}
-	n, err := req2.Receive(bytes.NewReader(data), nil)
+	n, err := req2.receive(bytes.NewReader(data), nil)
 	if err != nil {
 		t.Fatalf("Error receiving: %v", err)
 	}
@@ -222,10 +222,10 @@ func TestReceiveRequestNoContent(t *testing.T) {
 		Opaque: 7242,
 	}
 
-	data := req.Bytes()
+	data := req.bytes()
 
 	req2 := Request{}
-	n, err := req2.Receive(bytes.NewReader(data), nil)
+	n, err := req2.receive(bytes.NewReader(data), nil)
 	if err != nil {
 		t.Fatalf("Error receiving: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestReceiveRequestNoContent(t *testing.T) {
 
 func TestReceiveRequestShortHdr(t *testing.T) {
 	req := Request{}
-	n, err := req.Receive(bytes.NewReader([]byte{1, 2, 3}), nil)
+	n, err := req.receive(bytes.NewReader([]byte{1, 2, 3}), nil)
 	if err == nil {
 		t.Errorf("Expected error, got %#v", req)
 	}
@@ -259,10 +259,10 @@ func TestReceiveRequestShortBody(t *testing.T) {
 		Body:   []byte("somevalue"),
 	}
 
-	data := req.Bytes()
+	data := req.bytes()
 
 	req2 := Request{}
-	n, err := req2.Receive(bytes.NewReader(data[:len(data)-3]), nil)
+	n, err := req2.receive(bytes.NewReader(data[:len(data)-3]), nil)
 	if err == nil {
 		t.Errorf("Expected error, got %#v", req2)
 	}
@@ -281,11 +281,11 @@ func TestReceiveRequestBadMagic(t *testing.T) {
 		Body:   []byte("somevalue"),
 	}
 
-	data := req.Bytes()
+	data := req.bytes()
 	data[0] = 0x83
 
 	req2 := Request{}
-	_, err := req2.Receive(bytes.NewReader(data), nil)
+	_, err := req2.receive(bytes.NewReader(data), nil)
 	if err == nil {
 		t.Fatalf("Expected error, got %#v", req2)
 	}
@@ -301,10 +301,10 @@ func TestReceiveRequestLongBody(t *testing.T) {
 		Body:   make([]byte, MaxBodyLen+5),
 	}
 
-	data := req.Bytes()
+	data := req.bytes()
 
 	req2 := Request{}
-	_, err := req2.Receive(bytes.NewReader(data), nil)
+	_, err := req2.receive(bytes.NewReader(data), nil)
 	if err == nil {
 		t.Fatalf("Expected error, got %#v", req2)
 	}
@@ -320,7 +320,7 @@ func BenchmarkReceiveRequest(b *testing.B) {
 		Body:   []byte("somevalue"),
 	}
 
-	data := req.Bytes()
+	data := req.bytes()
 	data[0] = REQ_MAGIC
 	rdr := bytes.NewReader(data)
 
@@ -331,7 +331,7 @@ func BenchmarkReceiveRequest(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		req2 := Request{}
 		rdr.Seek(0, 0)
-		_, err := req2.Receive(rdr, buf)
+		_, err := req2.receive(rdr, buf)
 		if err != nil {
 			b.Fatalf("Error receiving: %v", err)
 		}
@@ -348,7 +348,7 @@ func BenchmarkReceiveRequestNoBuf(b *testing.B) {
 		Body:   []byte("somevalue"),
 	}
 
-	data := req.Bytes()
+	data := req.bytes()
 	data[0] = REQ_MAGIC
 	rdr := bytes.NewReader(data)
 
@@ -358,7 +358,7 @@ func BenchmarkReceiveRequestNoBuf(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		req2 := Request{}
 		rdr.Seek(0, 0)
-		_, err := req2.Receive(rdr, nil)
+		_, err := req2.receive(rdr, nil)
 		if err != nil {
 			b.Fatalf("Error receiving: %v", err)
 		}
