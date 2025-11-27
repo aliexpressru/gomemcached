@@ -354,7 +354,9 @@ func TestDecodeSpecSample(t *testing.T) {
 	if !reflect.DeepEqual(res, expected) {
 		t.Fatalf("Expected\n%#v -- got --\n%#v", expected, res)
 	}
-	assert.Nil(t, UnwrapMemcachedError(err), "UnwrapMemcachedError: should be return nil for success getResponse")
+	unwrappedResp, ok := UnwrapMemcachedError(err)
+	assert.False(t, ok, "UnwrapMemcachedError: should return ok=false for success getResponse")
+	assert.Nil(t, unwrappedResp, "UnwrapMemcachedError: should return nil response for success getResponse")
 }
 
 func TestNilReader(t *testing.T) {
@@ -550,7 +552,8 @@ func TestLocalhostWithAuth(t *testing.T) {
 func testWithClient(ctx context.Context, t *testing.T, c *Client) {
 	resp, err := c.Store(ctx, Set, "bigdata", 0, make([]byte, MaxBodyLen+1))
 	assert.ErrorIsf(t, err, ErrDataSizeExceedsLimit, "Store: body > MaxBodyLen, want error ErrDataSizeExceedsLimit")
-	unwrapResp := UnwrapMemcachedError(err)
+	unwrapResp, ok := UnwrapMemcachedError(err)
+	assert.True(t, ok, "UnwrapMemcachedError: should return ok=true for memcached error")
 	if !reflect.DeepEqual(resp, unwrapResp) {
 		t.Fatalf("Expected\n%#v -- got --\n%#v", resp, unwrapResp)
 	}

@@ -13,12 +13,15 @@ import (
 // If the error is a memcached response, declare the error to be nil
 // so a client can handle the status without worrying about whether it
 // indicates success or failure.
-func UnwrapMemcachedError(err error) *Response {
+//
+// The second return value (ok) indicates whether the error contains a *Response.
+// When ok is false, the returned *Response is nil.
+func UnwrapMemcachedError(err error) (resp *Response, ok bool) {
 	var res *Response
 	if errors.As(err, &res) {
-		return res
+		return res, true
 	}
-	return nil
+	return nil, false
 }
 
 func getResponse(s io.Reader, hdrBytes []byte) (rv *Response, n int, err error) {
