@@ -80,10 +80,10 @@ func Test_observeMethodDurationSeconds(t *testing.T) {
 				success = "1"
 			}
 
-			// Ensure metrics are initialized
-			if metricsRegistry.methodDurationSeconds == nil {
-				initMetrics(nil, nil, nil)
-			}
+		// Ensure metrics are initialized
+		if metricsRegistry.methodDurationSeconds == nil {
+			initMetrics(nil, nil, nil, "")
+		}
 
 			_, err := metricsRegistry.methodDurationSeconds.GetMetricWith(map[string]string{methodNameLabel: tt.args.methodName, isSuccessfulLabel: success})
 			assert.Nil(t, err, "GetMetricWith: returned error is not nil - %v", err)
@@ -176,7 +176,7 @@ func TestCustomMetricsRegistry(t *testing.T) {
 	customRegistry := prometheus.NewRegistry()
 
 	// Initialize metrics with custom registry
-	initMetrics(customRegistry, nil, nil)
+	initMetrics(customRegistry, nil, nil, "")
 
 	// Observe values to make sure the metrics are created
 	observeMethodDurationSeconds("TestMethod", 0.1, true)
@@ -324,4 +324,91 @@ func TestDefaultBuckets(t *testing.T) {
 		10, 100, 1024, 10240, 51200, 102400, 524288, 1048576, 5242880, 10485760,
 	}
 	assert.Equal(t, expectedSize, defaultSizeBuckets, "Default size buckets should match expected values")
+}
+
+func TestWithNamespaceMetrics(t *testing.T) {
+	ctx := context.TODO()
+
+	t.Run("default_namespace_aer_in_metrics", func(t *testing.T) {
+		// Reset metrics for clean state
+		metricsRegistry.mu = sync.Once{}
+		metricsRegistry.methodDurationSeconds = nil
+		metricsRegistry.objectSizeBytes = nil
+
+		// Create a custom registry to isolate this test
+		customRegistry := prometheus.NewRegistry()
+
+		client, err := InitFromEnv(
+			ctx,
+			WithServersList([]string{"localhost:11211"}),
+			WithMetricsRegisterer(customRegistry),
+		)
+		require.NoError(t, err)
+		require.NotNil(t, client)
+		defer client.CloseAllConns(ctx)
+
+		// Observe some metrics
+		observeMethodDurationSeconds("TestMethod", 0.1, true)
+		observeObjectSizeBytes("TestMethod", 1024.0)
+
+		// Gather metrics and verify default aer namespace
+		families, err := customRegistry.Gather()
+		require.NoError(t, err)
+
+		foundDuration := false
+		foundSize := false
+		for _, family := range families {
+			if family.GetName() == "aer_gomemcached_method_duration_seconds" {
+				foundDuration = true
+			}
+			if family.GetName() == "aer_gomemcached_object_size_bytes" {
+				foundSize = true
+			}
+		}
+
+		assert.True(t, foundDuration, "Expected duration metric with default 'aer' namespace")
+		assert.True(t, foundSize, "Expected size metric with default 'aer' namespace")
+	})
+
+	t.Run("override_namespace_to_empty", func(t *testing.T) {
+		// Reset metrics for clean state
+		metricsRegistry.mu = sync.Once{}
+		metricsRegistry.methodDurationSeconds = nil
+		metricsRegistry.objectSizeBytes = nil
+
+		// Create a custom registry to isolate this test
+		customRegistry := prometheus.NewRegistry()
+
+		client, err := InitFromEnv(
+			ctx,
+			WithServersList([]string{"localhost:11211"}),
+			WithNamespace(""), // Override to no prefix
+			WithMetricsRegisterer(customRegistry),
+		)
+		require.NoError(t, err)
+		require.NotNil(t, client)
+		defer client.CloseAllConns(ctx)
+
+		// Observe some metrics
+		observeMethodDurationSeconds("TestMethod", 0.1, true)
+		observeObjectSizeBytes("TestMethod", 1024.0)
+
+		// Gather metrics and verify no namespace prefix
+		families, err := customRegistry.Gather()
+		require.NoError(t, err)
+
+		foundDuration := false
+		foundSize := false
+		for _, family := range families {
+			if family.GetName() == "gomemcached_method_duration_seconds" {
+				foundDuration = true
+			}
+			if family.GetName() == "gomemcached_object_size_bytes" {
+				foundSize = true
+			}
+		}
+
+		assert.True(t, foundDuration, "Expected duration metric without namespace")
+		assert.True(t, foundSize, "Expected size metric without namespace")
+	})
 }

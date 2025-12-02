@@ -13,21 +13,25 @@ import (
 // 1. Using a custom Prometheus registry
 // 2. Using custom histogram buckets for latency measurement
 // 3. Using custom histogram buckets for object size measurement
+// 4. Using custom namespace for environment variables and metrics
 func exampleCustomMetrics() {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	_ = os.Setenv("MEMCACHED_SERVERS", "localhost:11211")
+	// By default, the client uses "aer" namespace for environment variables
+	_ = os.Setenv("AER_MEMCACHED_SERVERS", "localhost:11211")
 
-	// Example 1: Use default prometheus registry and default buckets
+	// Example 1: Use default prometheus registry, default buckets, and default "aer" namespace
 	// This is the simplest case - metrics will be automatically registered
 	// with prometheus.DefaultRegisterer
+	// Metrics will be: aer_gomemcached_method_duration_seconds, aer_gomemcached_object_size_bytes
 	mclDefault, err := memcached.InitFromEnv(ctx)
 	mustInit(err)
 	defer mclDefault.CloseAllConns(ctx)
 
 	// Example 2: Use custom prometheus registry
 	// Useful when you need to isolate metrics or use multiple registries
+	// Metrics will still use "aer" namespace: aer_gomemcached_*
 	customRegistry := prometheus.NewRegistry()
 
 	mclCustomRegistry, err := memcached.InitFromEnv(

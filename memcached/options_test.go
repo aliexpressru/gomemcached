@@ -14,8 +14,8 @@ import (
 )
 
 func TestWithOptionsBase(t *testing.T) {
-	os.Setenv("MEMCACHED_SERVERS", "localhost:11211")
-	os.Setenv("MEMCACHED_PORT", "99999")
+	os.Setenv("AER_MEMCACHED_SERVERS", "localhost:11211")
+	os.Setenv("AER_MEMCACHED_PORT", "99999")
 
 	ctx := context.TODO()
 
@@ -66,8 +66,8 @@ func TestWithOptionsBase(t *testing.T) {
 
 func TestWithOptionsOverrides(t *testing.T) {
 	// envs for override
-	os.Setenv("MEMCACHED_SERVERS", "localhost:11211")
-	os.Setenv("MEMCACHED_PORT", "99999")
+	os.Setenv("AER_MEMCACHED_SERVERS", "localhost:11211")
+	os.Setenv("AER_MEMCACHED_PORT", "99999")
 
 	ctx := context.TODO()
 
@@ -101,4 +101,58 @@ func TestWithOptionsOverrides(t *testing.T) {
 	}
 	WithHeadlessServiceAddress("option-headless.local")(opt)
 	assert.Equal(t, "option-headless.local", opt.cfg.HeadlessServiceAddress, "WithHeadlessServiceAddress should set headless address")
+}
+
+func TestWithNamespace(t *testing.T) {
+	ctx := context.TODO()
+
+	t.Run("default_namespace_is_aer", func(t *testing.T) {
+		// Set environment variables with default AER prefix
+		t.Setenv("AER_MEMCACHED_SERVERS", "localhost:11211")
+		t.Setenv("AER_MEMCACHED_PORT", "11212")
+
+		client, err := InitFromEnv(ctx, WithDisableNodeProvider())
+		assert.NoError(t, err)
+		assert.NotNil(t, client)
+		defer client.CloseAllConns(ctx)
+
+		assert.Equal(t, []string{"localhost:11211"}, client.cfg.Servers, "Should read from AER_MEMCACHED_SERVERS by default")
+		assert.Equal(t, 11212, client.cfg.MemcachedPort, "Should read from AER_MEMCACHED_PORT by default")
+	})
+
+	t.Run("override_namespace_to_empty", func(t *testing.T) {
+		// Set environment variables without prefix
+		t.Setenv("MEMCACHED_SERVERS", "localhost:11213")
+		t.Setenv("MEMCACHED_PORT", "11214")
+
+		client, err := InitFromEnv(
+			ctx,
+			WithNamespace(""),  // Override to use no prefix
+			WithDisableNodeProvider(),
+		)
+		assert.NoError(t, err)
+		assert.NotNil(t, client)
+		defer client.CloseAllConns(ctx)
+
+		assert.Equal(t, []string{"localhost:11213"}, client.cfg.Servers, "Should read from MEMCACHED_SERVERS with empty namespace")
+		assert.Equal(t, 11214, client.cfg.MemcachedPort, "Should read from MEMCACHED_PORT with empty namespace")
+	})
+
+	t.Run("override_namespace_to_custom", func(t *testing.T) {
+		// Set environment variables with custom prefix
+		t.Setenv("CUSTOM_MEMCACHED_SERVERS", "localhost:11215")
+		t.Setenv("CUSTOM_MEMCACHED_PORT", "11216")
+
+		client, err := InitFromEnv(
+			ctx,
+			WithNamespace("custom"),
+			WithDisableNodeProvider(),
+		)
+		assert.NoError(t, err)
+		assert.NotNil(t, client)
+		defer client.CloseAllConns(ctx)
+
+		assert.Equal(t, []string{"localhost:11215"}, client.cfg.Servers, "Should read from CUSTOM_MEMCACHED_SERVERS")
+		assert.Equal(t, 11216, client.cfg.MemcachedPort, "Should read from CUSTOM_MEMCACHED_PORT")
+	})
 }

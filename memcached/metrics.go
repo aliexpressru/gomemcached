@@ -41,7 +41,7 @@ var (
 )
 
 // initMetrics initializes the metrics with custom configuration
-func initMetrics(registerer prometheus.Registerer, durationBuckets []float64, sizeBuckets []float64) {
+func initMetrics(registerer prometheus.Registerer, durationBuckets []float64, sizeBuckets []float64, namespace string) {
 	if registerer == nil {
 		registerer = prometheus.DefaultRegisterer
 	}
@@ -56,7 +56,7 @@ func initMetrics(registerer prometheus.Registerer, durationBuckets []float64, si
 
 	metricsRegistry.mu.Do(func() {
 		metricsRegistry.methodDurationSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "",
+			Namespace: namespace,
 			Name:      "gomemcached_method_duration_seconds",
 			Help:      "counts the execution time of successful and failed gomemcached methods",
 			Buckets:   durationBuckets,
@@ -66,7 +66,7 @@ func initMetrics(registerer prometheus.Registerer, durationBuckets []float64, si
 		})
 
 		metricsRegistry.objectSizeBytes = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "",
+			Namespace: namespace,
 			Name:      "gomemcached_object_size_bytes",
 			Help:      "tracks the size of objects being stored in memcached",
 			Buckets:   sizeBuckets,
@@ -84,7 +84,7 @@ func initMetrics(registerer prometheus.Registerer, durationBuckets []float64, si
 func observeMethodDurationSeconds(methodName string, duration float64, isSuccessful bool) {
 	if metricsRegistry.methodDurationSeconds == nil {
 		// Initialize with defaults if not yet initialized
-		initMetrics(nil, nil, nil)
+		initMetrics(nil, nil, nil, "")
 	}
 
 	flag := "0"
@@ -101,7 +101,7 @@ func observeMethodDurationSeconds(methodName string, duration float64, isSuccess
 func observeObjectSizeBytes(methodName string, sizeBytes float64) {
 	if metricsRegistry.objectSizeBytes == nil {
 		// Initialize with defaults if not yet initialized
-		initMetrics(nil, nil, nil)
+		initMetrics(nil, nil, nil, "")
 	}
 
 	metricsRegistry.objectSizeBytes.

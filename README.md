@@ -20,29 +20,45 @@ ___
 
 ### Configuration
 
-Configuration is primarily done through environment variables:
+Configuration is primarily done through environment variables.
 
+#### Namespace
+
+By default, the client uses the **"aer"** namespace for environment variables and metrics. This means:
+
+**Environment variables:**
 ```yaml
-    - name: MEMCACHED_HEADLESS_SERVICE_ADDRESS
+    - name: AER_MEMCACHED_HEADLESS_SERVICE_ADDRESS
       value: "my-memchached-service-headless.namespace.svc.cluster.local"
+    - name: AER_MEMCACHED_PORT
+      value: "11211"
+    - name: AER_MEMCACHED_SERVERS
+      value: "127.0.0.1:11211,192.168.0.1:1234"
 ```
 
-`MEMCACHED_HEADLESS_SERVICE_ADDRESS` groups all memcached instances by ip addresses using dns lookup.
+#### Custom or Empty Namespace
 
-Default Memcached port is `11211`, but you can also specify it in config.
+You can customize or disable the namespace prefix using `WithNamespace()`:
 
-```yaml
-    - name: MEMCACHED_PORT
-      value: "12345"
+```go
+// Use no prefix (legacy behavior)
+mcl, err := memcached.InitFromEnv(ctx, memcached.WithNamespace(""))
+// Environment variables: MEMCACHED_SERVERS, MEMCACHED_PORT, MEMCACHED_HEADLESS_SERVICE_ADDRESS
+// Metrics: gomemcached_method_duration_seconds, gomemcached_object_size_bytes
+
+// Use custom prefix
+mcl, err := memcached.InitFromEnv(ctx, memcached.WithNamespace("myapp"))
+// Environment variables: MYAPP_MEMCACHED_SERVERS, MYAPP_MEMCACHED_PORT, MYAPP_MEMCACHED_HEADLESS_SERVICE_ADDRESS
+// Metrics: myapp_gomemcached_method_duration_seconds, myapp_gomemcached_object_size_bytes
 ```
 
-For local run or if you have a static amount and setup of pods you can specify Servers (list separated by commas along with the port) manually instead of setting the
-HeadlessServiceAddress:
+#### Configuration Variables
 
-```yaml
-  - name: MEMCACHED_SERVERS
-    value: "127.0.0.1:11211,192.168.0.1:1234"
-```
+`MEMCACHED_HEADLESS_SERVICE_ADDRESS` (or `AER_MEMCACHED_HEADLESS_SERVICE_ADDRESS`) groups all memcached instances by ip addresses using dns lookup.
+
+Default Memcached port is `11211`, but you can also specify it with `MEMCACHED_PORT` (or `AER_MEMCACHED_PORT`).
+
+For local run or if you have a static amount and setup of pods you can specify Servers (list separated by commas along with the port) manually with `MEMCACHED_SERVERS` (or `AER_MEMCACHED_SERVERS`) instead of setting the HeadlessServiceAddress.
 
 > **Note:** Environment variables are the preferred configuration method, but can be overridden programmatically with `WithHeadlessServiceAddress()`, `WithServersList()`, and `WithMemcachedPort()` options.
 ___
@@ -72,18 +88,19 @@ to use the default client implementation.
 
 #### Metrics
 
-The client automatically collects Prometheus metrics for method execution time and object sizes. By default, metrics are registered with `prometheus.DefaultRegisterer`. See [metrics.go](memcached/metrics.go) for implementation details.
+The client automatically collects Prometheus metrics for method execution time and object sizes. By default, metrics are registered with `prometheus.DefaultRegisterer` and use the **"aer"** namespace prefix. See [metrics.go](memcached/metrics.go) for implementation details.
 
-Available metrics:
-- `gomemcached_method_duration_seconds` - histogram of method execution times
-- `gomemcached_object_size_bytes` - histogram of object sizes being stored
+Available metrics (with default "aer" namespace):
+- `aer_gomemcached_method_duration_seconds` - histogram of method execution times
+- `aer_gomemcached_object_size_bytes` - histogram of object sizes being stored
 
 ##### Default Usage
 
-Metrics are automatically registered with the default Prometheus registry:
+Metrics are automatically registered with the default Prometheus registry and "aer" namespace:
 
 ```go
 mcl, err := memcached.InitFromEnv(ctx)
+// Metrics: aer_gomemcached_method_duration_seconds, aer_gomemcached_object_size_bytes
 ```
 
 ##### Custom Prometheus Registry

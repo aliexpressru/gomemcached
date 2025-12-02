@@ -42,6 +42,9 @@ const (
 
 	// DefaultSocketPoolingTimeout Amount of time to acquire socket from pool
 	DefaultSocketPoolingTimeout = 50 * time.Millisecond
+
+	// DefaultNamespace is the default namespace/prefix for environment variables and metrics
+	DefaultNamespace = "aer"
 )
 
 var _ Memcached = (*Client)(nil)
@@ -143,17 +146,38 @@ type (
 // InitFromEnv returns a memcached client using the config.HeadlessServiceAddress or config.Servers
 // with equal weight. If a server is listed multiple times,
 // it gets a proportional amount of weight.
+//
+// By default, uses "aer" namespace for environment variables and metrics:
+//   - Environment variables: AER_MEMCACHED_SERVERS, AER_MEMCACHED_PORT, AER_MEMCACHED_HEADLESS_SERVICE_ADDRESS
+//   - Metrics: aer_gomemcached_method_duration_seconds, aer_gomemcached_object_size_bytes
+//
+// To use no namespace (legacy behavior), use WithNamespace(""):
+//   - Environment variables: MEMCACHED_SERVERS, MEMCACHED_PORT, MEMCACHED_HEADLESS_SERVICE_ADDRESS
+//   - Metrics: gomemcached_method_duration_seconds, gomemcached_object_size_bytes
 func InitFromEnv(ctx context.Context, opts ...Option) (*Client, error) {
 	var (
 		op  = new(options)
 		cfg = new(config)
 	)
-	if err := envconfig.Process("", cfg); err != nil {
-		return nil, fmt.Errorf("%s: client init err: %s", libPrefix, err.Error())
-	}
 
 	op.cfg = cfg
 
+	// Apply options first to get namespace
+	for _, opt := range opts {
+		opt(op)
+	}
+
+	// Use default namespace if not explicitly set
+	if !op.namespaceSet {
+		op.namespace = DefaultNamespace
+	}
+
+	// Read from environment variables with namespace prefix
+	if err := envconfig.Process(op.namespace, cfg); err != nil {
+		return nil, fmt.Errorf("%s: client init err: %s", libPrefix, err.Error())
+	}
+
+	// Apply options again to allow overriding environment values
 	for _, opt := range opts {
 		opt(op)
 	}
@@ -178,7 +202,7 @@ func InitFromEnv(ctx context.Context, opts ...Option) (*Client, error) {
 
 	// Initialize metrics with custom or default configuration
 	if !op.disableMemcachedDiagnostic {
-		initMetrics(op.metricsRegisterer, op.metricsDurationBuckets, op.metricsObjectSizeBuckets)
+		initMetrics(op.metricsRegisterer, op.metricsDurationBuckets, op.metricsObjectSizeBuckets, op.namespace)
 	}
 
 	return newFromConfig(op)

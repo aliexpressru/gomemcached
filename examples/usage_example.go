@@ -16,9 +16,18 @@ func main() {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	_ = os.Setenv("MEMCACHED_SERVERS", "localhost:11215")
+	// Default namespace is "aer", so environment variables should use AER_ prefix
+	_ = os.Setenv("AER_MEMCACHED_SERVERS", "localhost:11215")
 
 	// Initialize memcached client from environment variables
+	// By default uses AER_ prefix: AER_MEMCACHED_SERVERS, AER_MEMCACHED_PORT
+	// Metrics will have aer_ prefix: aer_gomemcached_method_duration_seconds
+	// Example: Override default namespace to use no prefix (for backward compatibility)
+	// _ = os.Setenv("MEMCACHED_SERVERS", "localhost:11211")
+	// mclNoPrefix, err := memcached.InitFromEnv(
+	// 	ctx,
+	// 	memcached.WithNamespace(""),  // Empty string = no prefix
+	// )
 	mcl, err := memcached.InitFromEnv(
 		ctx,
 		memcached.WithMaxIdleConns(10),
@@ -54,7 +63,7 @@ func main() {
 	_, err = mcl.Delete(ctx, "foo")
 	mustInit(err)
 
-	_, err = mcl.Delta(ctx, memcached.Increment, "incappend", 1, 1, 0)
+	_, err = mcl.Delta(ctx, memcached.Increment, "incappend", 1, 1, 42)
 	mustInit(err)
 
 	_, err = mcl.Append(ctx, memcached.Append, "incappend", []byte("add"))

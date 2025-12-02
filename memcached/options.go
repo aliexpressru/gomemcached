@@ -13,6 +13,8 @@ type options struct {
 	metricsRegisterer        prometheus.Registerer
 	metricsDurationBuckets   []float64
 	metricsObjectSizeBuckets []float64
+	namespace                string
+	namespaceSet             bool // indicates if namespace was explicitly set
 }
 
 type Option func(*options)
@@ -147,5 +149,24 @@ func WithMetricsDurationBuckets(buckets []float64) Option {
 func WithMetricsObjectSizeBuckets(buckets []float64) Option {
 	return func(o *options) {
 		o.metricsObjectSizeBuckets = buckets
+	}
+}
+
+// WithNamespace sets a custom namespace/prefix for environment variables and metrics.
+// By default, "aer" namespace is used. Use this option to override the default.
+//
+// This affects:
+//   - Environment variable prefix (e.g., "CUSTOM_MEMCACHED_SERVERS" with namespace "custom")
+//   - Metrics namespace (e.g., "custom_gomemcached_method_duration_seconds")
+//
+// Examples:
+//   - WithNamespace("custom") - uses CUSTOM_ prefix for env vars and custom_ for metrics
+//   - WithNamespace("") - uses no prefix (MEMCACHED_SERVERS, gomemcached_method_duration_seconds)
+//
+// Note: Default namespace is "aer" (AER_MEMCACHED_SERVERS, aer_gomemcached_method_duration_seconds).
+func WithNamespace(namespace string) Option {
+	return func(o *options) {
+		o.namespace = namespace
+		o.namespaceSet = true
 	}
 }
