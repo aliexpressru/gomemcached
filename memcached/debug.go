@@ -43,7 +43,7 @@ func logDebugNodeKeys(ctx context.Context, method string, node any, keys []strin
 	nodeAddr := utils.Repr(node)
 	keysStr := strings.Join(keys, ", ")
 
-	logger.Infof("gomemcached: %s %s - [%s]", method, nodeAddr, keysStr)
+	logger.Infof(ctx, "gomemcached: %s %s - [%s]", method, nodeAddr, keysStr)
 }
 
 // logDebugSingleKey logs which key is being sent to which node for single operations.
@@ -53,7 +53,7 @@ func logDebugSingleKey(ctx context.Context, method string, node any, key string)
 	}
 
 	nodeAddr := utils.Repr(node)
-	logger.Infof("gomemcached: %s %s - [%s]", method, nodeAddr, key)
+	logger.Infof(ctx, "gomemcached: %s %s - [%s]", method, nodeAddr, key)
 }
 
 // logDebugNodes logs the distribution of keys across nodes.

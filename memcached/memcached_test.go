@@ -35,7 +35,6 @@ func newForTests(servers ...string) (*Client, error) {
 		hr.Add(addr)
 	}
 	cm := &Client{
-		ctx:                        context.TODO(),
 		opaque:                     new(uint32),
 		hr:                         hr,
 		disableMemcachedDiagnostic: true,
@@ -970,7 +969,6 @@ func TestSafeConnErrors(t *testing.T) {
 	mockNetworkErr.On("DialTimeout", addr.Network(), addr.String(), DefaultTimeout).Return(nil, expectedDialErr)
 
 	client := &Client{
-		ctx:       ctx,
 		nw:        &network{dialTimeout: mockNetworkErr.DialTimeout},
 		freeConns: make(map[string]*pool.Pool),
 	}
@@ -1115,8 +1113,6 @@ func TestSendErrors(t *testing.T) {
 
 func TestDialTimeoutError(t *testing.T) {
 	var (
-		ctx = context.TODO()
-
 		mockNetworkHeadlessErr = new(mockNetworkOperations)
 
 		addr, _ = utils.AddrRepr("127.0.0.1:11211")
@@ -1126,8 +1122,7 @@ func TestDialTimeoutError(t *testing.T) {
 	mockNetworkHeadlessErr.On("DialTimeout", addr.Network(), addr.String(), DefaultTimeout).Return(nil, &mockTimeoutError{})
 
 	client := &Client{
-		ctx: ctx,
-		nw:  &network{dialTimeout: mockNetworkHeadlessErr.DialTimeout},
+		nw: &network{dialTimeout: mockNetworkHeadlessErr.DialTimeout},
 	}
 
 	// Call dial which should return a ConnectTimeoutError
@@ -1139,7 +1134,10 @@ func TestDialTimeoutError(t *testing.T) {
 }
 
 func TestAuthenticate(t *testing.T) {
-	addr, _ := utils.AddrRepr(localhostTCPAddrWithAuth)
+	var (
+		ctx     = context.TODO()
+		addr, _ = utils.AddrRepr(localhostTCPAddrWithAuth)
+	)
 
 	t.Run("SASL_AUTH transmitRequest error", func(t *testing.T) {
 		mockWriter := new(mockReadWriteCloser)
@@ -1160,7 +1158,7 @@ func TestAuthenticate(t *testing.T) {
 			healthy: true,
 		}
 
-		ok, err := client.authenticate(cn)
+		ok, err := client.authenticate(ctx, cn)
 		assert.False(t, ok, "authenticate should return false on transmitRequest error")
 		assert.ErrorIs(t, err, expectedErr, "authenticate should return the write error")
 	})
@@ -1184,7 +1182,7 @@ func TestAuthenticate(t *testing.T) {
 			healthy: true,
 		}
 
-		ok, err := client.authenticate(cn)
+		ok, err := client.authenticate(ctx, cn)
 		assert.False(t, ok, "authenticate should return false on flush error")
 		assert.Error(t, err, "authenticate should return the flush error")
 	})
@@ -1217,7 +1215,7 @@ func TestAuthenticate(t *testing.T) {
 			healthy: true,
 		}
 
-		ok, err := client.authenticate(cn)
+		ok, err := client.authenticate(ctx, cn)
 		assert.False(t, ok, "authenticate should return false on ErrNoServers")
 		assert.ErrorIs(t, err, ErrNoServers, "authenticate should return ErrNoServers")
 	})
@@ -1265,7 +1263,7 @@ func TestAuthenticate(t *testing.T) {
 			healthy: true,
 		}
 
-		ok, err := client.authenticate(cn)
+		ok, err := client.authenticate(ctx, cn)
 		assert.False(t, ok, "authenticate should return false on SASL_STEP transmitRequest error")
 		assert.Error(t, err, "authenticate should return an error")
 	})
@@ -1303,7 +1301,7 @@ func TestAuthenticate(t *testing.T) {
 			healthy: true,
 		}
 
-		ok, err := client.authenticate(cn)
+		ok, err := client.authenticate(ctx, cn)
 		assert.True(t, ok, "authenticate should return true on successful auth")
 		assert.Nil(t, err, "authenticate should not return error on successful auth")
 	})
@@ -1341,7 +1339,7 @@ func TestAuthenticate(t *testing.T) {
 			healthy: true,
 		}
 
-		ok, err := client.authenticate(cn)
+		ok, err := client.authenticate(ctx, cn)
 		assert.False(t, ok, "authenticate should return false on error status")
 		assert.Error(t, err, "authenticate should return error on wrong status")
 		assert.Contains(t, err.Error(), "error from sasl auth", "Error should contain expected message")
@@ -1383,7 +1381,7 @@ func TestAuthenticate(t *testing.T) {
 			healthy: true,
 		}
 
-		ok, err := client.authenticate(cn)
+		ok, err := client.authenticate(ctx, cn)
 		assert.False(t, ok, "authenticate should return false on SASL_STEP getResponse error")
 		assert.Error(t, err, "authenticate should return error on SASL_STEP getResponse error")
 	})
@@ -1427,7 +1425,7 @@ func TestAuthenticate(t *testing.T) {
 			healthy: true,
 		}
 
-		ok, err := client.authenticate(cn)
+		ok, err := client.authenticate(ctx, cn)
 		assert.False(t, ok, "authenticate should return false on SASL_STEP flush error")
 		assert.Error(t, err, "authenticate should return error on SASL_STEP flush error")
 	})
@@ -1478,7 +1476,7 @@ func TestAuthenticate(t *testing.T) {
 			healthy: true,
 		}
 
-		ok, err := client.authenticate(cn)
+		ok, err := client.authenticate(ctx, cn)
 		assert.True(t, ok, "authenticate should return true on successful FURTHER_AUTH flow")
 		assert.Nil(t, err, "authenticate should not return error on successful FURTHER_AUTH flow")
 	})
@@ -1558,7 +1556,7 @@ func TestMethodsErrors(t *testing.T) {
 		},
 	}
 
-	_, err = newFromConfig(op)
+	_, err = newFromConfig(ctx, op)
 	assert.ErrorIs(t, err, ErrInvalidAddr)
 
 	mockNetworkNodeErr := new(mockNetworkOperations)
@@ -1571,7 +1569,7 @@ func TestMethodsErrors(t *testing.T) {
 		},
 	}
 
-	_, err = newFromConfig(op)
+	_, err = newFromConfig(ctx, op)
 	assert.ErrorIs(t, err, ErrInvalidAddr)
 }
 

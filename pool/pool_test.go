@@ -32,7 +32,7 @@ func TestPool(t *testing.T) {
 	ctx := context.TODO()
 
 	assert.Panics(t, func() {
-		_ = New(ctx, 0, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+		_ = New(0, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 	}, "was expected panic")
 
 	defer func() {
@@ -41,7 +41,7 @@ func TestPool(t *testing.T) {
 		}
 	}()
 
-	p := New(ctx, 2, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	p := New(2, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 	defer p.Destroy()
 
 	cCtx, candel := context.WithCancel(ctx)
@@ -83,7 +83,7 @@ func TestPool(t *testing.T) {
 
 func TestPoolConcurrency(t *testing.T) {
 	ctx := context.TODO()
-	p := New(ctx, 10, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	p := New(10, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 	defer p.Destroy()
 
 	var wg sync.WaitGroup
@@ -106,7 +106,7 @@ func TestCountConns(t *testing.T) {
 	var ctx = context.TODO()
 	const count = 300
 
-	p := New(ctx, int32(count), defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	p := New(int32(count), defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 
 	conn := atomic.Int32{}
 	wg1 := sync.WaitGroup{}
@@ -164,7 +164,7 @@ func TestCountConns(t *testing.T) {
 	assert.Nil(t, cn, "Get: after method Destroy, pool is closed and should return cn == nil")
 	assert.ErrorIs(t, err, ErrClosedPool, "Get: after method Destroy, pool is closed, want error ErrClosedPool")
 
-	p2 := New(ctx, count, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	p2 := New(count, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 
 	var (
 		mu    sync.RWMutex
@@ -236,7 +236,7 @@ func TestCountConns(t *testing.T) {
 		}()
 	}
 
-	p3 := New(ctx, 1, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	p3 := New(1, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 
 	// maxConns is full
 	_, _ = p3.Get(ctx)
@@ -253,19 +253,19 @@ func TestCountConns(t *testing.T) {
 	assert.Nil(t, cn, "Pop: after method Destroy, pool is closed and should return cn == nil")
 	assert.False(t, ok, "Pop: after method Destroy, pool is closed and should return false for second arg")
 
-	p4 := New(ctx, 1, defaultSocketPoolingTimeout, newTestConnectionWithErr, closeTestConnection)
+	p4 := New(1, defaultSocketPoolingTimeout, newTestConnectionWithErr, closeTestConnection)
 
 	cn, err = p4.Get(ctx)
 	assert.Nil(t, cn, "Get: create new conn returned an error, conn should be nil")
 	assert.ErrorIs(t, err, http.ErrHandlerTimeout, "Get: error should be equal - http.ErrHandlerTimeout")
 
-	p5 := New(ctx, 1, time.Second, nil, nil)
+	p5 := New(1, time.Second, nil, nil)
 
 	cn, err = p5.Get(ctx)
 	assert.Nil(t, cn, "Get: newFunc equal nil, conn should be nil")
 	assert.ErrorIs(t, err, ErrNewFuncNil, "Get: error should be equal ErrNewFuncNil")
 
-	p6 := New(ctx, 1, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
+	p6 := New(1, defaultSocketPoolingTimeout, newTestConnection, closeTestConnection)
 	bcn, err := p6.Get(ctx)
 	assert.NotNil(t, bcn, "Get: conn cannot be nil")
 	assert.Nil(t, err, "Get: error should be nil")

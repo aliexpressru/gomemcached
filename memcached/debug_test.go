@@ -9,7 +9,7 @@ import (
 )
 
 func TestEnableDebugLog(t *testing.T) {
-	ctx := context.Background()
+	ctx := context.TODO()
 
 	// Initially debug should not be enabled
 	assert.False(t, isDebugEnabled(ctx), "Debug should not be enabled by default")
@@ -32,17 +32,17 @@ func TestIsDebugEnabled(t *testing.T) {
 		},
 		{
 			name: "context without debug",
-			ctx:  context.Background(),
+			ctx:  context.TODO(),
 			want: false,
 		},
 		{
 			name: "context with debug enabled",
-			ctx:  EnableDebugLog(context.Background()),
+			ctx:  EnableDebugLog(context.TODO()),
 			want: true,
 		},
 		{
 			name: "context with wrong value type",
-			ctx:  context.WithValue(context.Background(), debugLogKey, "wrong"),
+			ctx:  context.WithValue(context.TODO(), debugLogKey, "wrong"),
 			want: false,
 		},
 	}
@@ -56,7 +56,7 @@ func TestIsDebugEnabled(t *testing.T) {
 }
 
 func TestLogDebugNodeKeys(t *testing.T) {
-	ctx := EnableDebugLog(context.Background())
+	ctx := EnableDebugLog(context.TODO())
 
 	addr := &net.TCPAddr{
 		IP:   net.IPv4(127, 0, 0, 1),
@@ -69,12 +69,12 @@ func TestLogDebugNodeKeys(t *testing.T) {
 	logDebugNodeKeys(ctx, "TestMethod", addr, keys)
 
 	// Test with disabled debug
-	ctx = context.Background()
+	ctx = context.TODO()
 	logDebugNodeKeys(ctx, "TestMethod", addr, keys)
 }
 
 func TestLogDebugSingleKey(t *testing.T) {
-	ctx := EnableDebugLog(context.Background())
+	ctx := EnableDebugLog(context.TODO())
 
 	addr := &net.TCPAddr{
 		IP:   net.IPv4(127, 0, 0, 1),
@@ -87,12 +87,12 @@ func TestLogDebugSingleKey(t *testing.T) {
 	logDebugSingleKey(ctx, "Get", addr, key)
 
 	// Test with disabled debug
-	ctx = context.Background()
+	ctx = context.TODO()
 	logDebugSingleKey(ctx, "Get", addr, key)
 }
 
 func TestLogDebugNodes(t *testing.T) {
-	ctx := EnableDebugLog(context.Background())
+	ctx := EnableDebugLog(context.TODO())
 
 	addr1 := &net.TCPAddr{
 		IP:   net.IPv4(127, 0, 0, 1),
@@ -112,6 +112,6 @@ func TestLogDebugNodes(t *testing.T) {
 	logDebugNodes(ctx, "TestMethod", nodes)
 
 	// Test with disabled debug
-	ctx = context.Background()
+	ctx = context.TODO()
 	logDebugNodes(ctx, "TestMethod", nodes)
 }

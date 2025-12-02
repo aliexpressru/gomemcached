@@ -68,7 +68,6 @@ type (
 	// Client is a memcached client.
 	// It is safe for unlocked use by multiple concurrent goroutines.
 	Client struct {
-		ctx context.Context
 		nw  *network
 		cfg *config
 
@@ -198,17 +197,16 @@ func InitFromEnv(ctx context.Context, opts ...Option) (*Client, error) {
 	if op.disableLogger {
 		logger.DisableLogger()
 	}
-	op.ctx = ctx
 
 	// Initialize metrics with custom or default configuration
 	if !op.disableMemcachedDiagnostic {
 		initMetrics(op.metricsRegisterer, op.metricsDurationBuckets, op.metricsObjectSizeBuckets, op.namespace)
 	}
 
-	return newFromConfig(op)
+	return newFromConfig(ctx, op)
 }
 
-func newFromConfig(op *options) (*Client, error) {
+func newFromConfig(ctx context.Context, op *options) (*Client, error) {
 	if op.cfg != nil && (op.cfg.HeadlessServiceAddress == "" && len(op.cfg.Servers) == 0) {
 		return nil, fmt.Errorf("%w, you must fill in either MEMCACHED_HEADLESS_SERVICE_ADDRESS or MEMCACHED_SERVERS", ErrNotConfigured)
 	}
@@ -228,7 +226,7 @@ func newFromConfig(op *options) (*Client, error) {
 	}
 
 	if !mc.disableNodeProvider {
-		mc.initNodesProvider()
+		mc.initNodesProvider(ctx)
 	}
 	return mc, nil
 }
@@ -299,7 +297,7 @@ func (c *Client) safeGetOrInitFreeConn(addr net.Addr) *pool.Pool {
 		_ = cn.(*conn).rc.Close()
 	}
 
-	newPool := pool.New(c.ctx, int32(c.getMaxIdleConns()), DefaultSocketPoolingTimeout, dialConn, closeConn)
+	newPool := pool.New(int32(c.getMaxIdleConns()), DefaultSocketPoolingTimeout, dialConn, closeConn)
 
 	if c.freeConns == nil {
 		c.freeConns = make(map[string]*pool.Pool)
@@ -335,7 +333,7 @@ func (c *Client) getFreeConn(ctx context.Context, addr net.Addr) (*conn, error) 
 	cn := connRaw.(*conn)
 
 	if c.authEnable && !cn.authed {
-		if ok, aErr := c.authenticate(cn); ok {
+		if ok, aErr := c.authenticate(ctx, cn); ok {
 			cn.authed = true
 			return cn, nil
 		} else {
@@ -672,7 +670,7 @@ func (c *Client) FlushAll(ctx context.Context, exp uint32) (err error) {
 			}
 
 			if cnErr = cn.wrtBuf.Flush(); cnErr != nil {
-				logger.Errorf("%s. %s", ErrServerError.Error(), cnErr.Error())
+				logger.Errorf(ctx, "%s. %s", ErrServerError.Error(), cnErr.Error())
 				return
 			}
 
@@ -680,7 +678,7 @@ func (c *Client) FlushAll(ctx context.Context, exp uint32) (err error) {
 			if cnErr != nil {
 				if isFatal(cnErr) {
 					cn.healthy = false
-					logger.Errorf("%s. %s", ErrServerError.Error(), cnErr.Error())
+					logger.Errorf(ctx, "%s. %s", ErrServerError.Error(), cnErr.Error())
 					return
 				}
 			}
@@ -819,7 +817,7 @@ func (c *Client) MultiGet(ctx context.Context, keys []string) (_ map[string][]by
 			}
 
 			if cnErr = cn.wrtBuf.Flush(); cnErr != nil {
-				logger.Errorf("%s. %s", ErrServerError.Error(), cnErr.Error())
+				logger.Errorf(ctx, "%s. %s", ErrServerError.Error(), cnErr.Error())
 				return
 			}
 
@@ -832,7 +830,7 @@ func (c *Client) MultiGet(ctx context.Context, keys []string) (_ map[string][]by
 				resp, _, cnErr = getResponse(cn.rc, cn.hdrBuf)
 				if isFatal(cnErr) {
 					cn.healthy = false
-					logger.Errorf("%s. %s", ErrServerError.Error(), cnErr.Error())
+					logger.Errorf(ctx, "%s. %s", ErrServerError.Error(), cnErr.Error())
 					return
 				}
 
@@ -969,7 +967,7 @@ func (c *Client) MultiStore(ctx context.Context, storeMode StoreMode, items map[
 			}
 
 			if cnErr = cn.wrtBuf.Flush(); cnErr != nil {
-				logger.Errorf("%s. %s", ErrServerError.Error(), cnErr.Error())
+				logger.Errorf(ctx, "%s. %s", ErrServerError.Error(), cnErr.Error())
 				return
 			}
 
@@ -1114,7 +1112,7 @@ func (c *Client) MultiDelete(ctx context.Context, keys []string) (err error) {
 			}
 
 			if cnErr = cn.wrtBuf.Flush(); cnErr != nil {
-				logger.Errorf("%s. %s", ErrServerError.Error(), cnErr.Error())
+				logger.Errorf(ctx, "%s. %s", ErrServerError.Error(), cnErr.Error())
 				return
 			}
 
@@ -1225,7 +1223,7 @@ func (c *Client) writeItemSizeDiagnostics(methodName string, size int) {
 	observeObjectSizeBytes(methodName, float64(size))
 }
 
-func (c *Client) authenticate(cn *conn) (ok bool, err error) {
+func (c *Client) authenticate(ctx context.Context, cn *conn) (ok bool, err error) {
 	req := &Request{
 		Key:  []byte(SaslMechanism),
 		Body: c.authData,
@@ -1255,18 +1253,18 @@ func (c *Client) authenticate(cn *conn) (ok bool, err error) {
 	req.Opcode = SASL_STEP
 	_, err = transmitRequest(cn.wrtBuf, req)
 	if err != nil {
-		logger.Errorf("%s, %s", ErrServerError.Error(), err.Error())
+		logger.Errorf(ctx, "%s, %s", ErrServerError.Error(), err.Error())
 		return
 	}
 
 	resp, _, err = getResponse(cn.rc, cn.hdrBuf)
 	if err != nil {
-		logger.Errorf("%s: Error from sasl step - %v", libPrefix, resp)
+		logger.Errorf(ctx, "%s: Error from sasl step - %v", libPrefix, resp)
 		return
 	}
 
 	if err = cn.wrtBuf.Flush(); err != nil {
-		logger.Errorf("%s, %s", ErrServerError.Error(), err.Error())
+		logger.Errorf(ctx, "%s, %s", ErrServerError.Error(), err.Error())
 		return
 	}
 

@@ -29,8 +29,6 @@ type ConnPool interface {
 
 // Pool common connection pool
 type Pool struct {
-	gCtx context.Context
-
 	// newConn are functions for creating new connections if maxCap is not reached.
 	newConn func() (any, error)
 	// closeConn is a function for graceful closed connections.
@@ -50,13 +48,12 @@ type Pool struct {
 }
 
 // New create a pool with capacity
-func New(ctx context.Context, maxCap int32, acquireSemaTimeout time.Duration, newFunc func() (any, error), closeFunc func(any)) *Pool {
+func New(maxCap int32, acquireSemaTimeout time.Duration, newFunc func() (any, error), closeFunc func(any)) *Pool {
 	if maxCap <= 0 {
 		panic("invalid memcached maxCap")
 	}
 
 	return &Pool{
-		gCtx:          ctx,
 		newConn:       newFunc,
 		closeConn:     closeFunc,
 		sema:          semaphore.NewWeighted(int64(maxCap)),
@@ -89,7 +86,7 @@ func (p *Pool) Get(ctx context.Context) (any, error) {
 			if aqTimeout {
 				return nil, ErrAcquireTimeout
 			}
-			if cn, timeout, err := p.create(); timeout { //nolint:contextcheck
+			if cn, timeout, err := p.create(ctx); timeout {
 				// last try get conn after timeout
 				aqTimeout = true
 				continue
@@ -144,8 +141,8 @@ func (p *Pool) Close(v any) {
 	p.close(v)
 }
 
-func (p *Pool) create() (any, bool, error) {
-	ctx, cancel := context.WithTimeout(p.gCtx, p.aqSemaTimeout)
+func (p *Pool) create(ctx context.Context) (any, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, p.aqSemaTimeout)
 	defer cancel()
 
 	if err := p.sema.Acquire(ctx, token); err != nil {
