@@ -68,12 +68,14 @@ ___
 Initialization client and connected to memcached servers.
 
 ```go
-    mcl, err := memcached.InitFromEnv()
+    mcl, err := memcached.InitFromEnv(ctx)
     mustInit(err)
-    a.AddCloser(func () error {
-        mcl.CloseAllConns()
-        return nil
-    })
+    gracefulShutdown(
+        func() error {
+            mcl.CloseAllConns(ctx)
+            return nil
+        },
+    )
 ```
 [More examples](examples/usage_example.go)
 
