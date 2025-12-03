@@ -23,7 +23,7 @@ func main() {
 	// By default uses AER_ prefix: AER_MEMCACHED_SERVERS, AER_MEMCACHED_PORT
 	// Metrics will have aer_ prefix: aer_gomemcached_method_duration_seconds
 	// Example: Override default namespace to use no prefix (for backward compatibility)
-	// _ = os.Setenv("MEMCACHED_SERVERS", "localhost:11211")
+	// _ = os.Setenv("MEMCACHED_SERVERS", "localhost:11215")
 	// mclNoPrefix, err := memcached.InitFromEnv(
 	// 	ctx,
 	// 	memcached.WithNamespace(""),  // Empty string = no prefix
@@ -52,11 +52,11 @@ func main() {
 	// }
 
 	// Single operations
-	// With debug enabled, will log: gomemcached: Store 127.0.0.1:11211 - [foo]
+	// With debug enabled, will log: gomemcached: Store 127.0.0.1:11215 - [foo]
 	_, err = mcl.Store(ctx, memcached.Set, "foo", 10, []byte("bar"))
 	mustInit(err)
 
-	// With debug enabled, will log: gomemcached: Get 127.0.0.1:11211 - [foo]
+	// With debug enabled, will log: gomemcached: Get 127.0.0.1:11215 - [foo]
 	_, err = mcl.Get(ctx, "foo")
 	mustInit(err)
 
@@ -80,8 +80,8 @@ func main() {
 	mustInit(err)
 
 	// With debug enabled, will log something like:
-	// gomemcached: MultiGet 127.0.0.1:11211 - [foo, answer]
-	// gomemcached: MultiGet 127.0.0.2:11211 - [gopher]
+	// gomemcached: MultiGet 127.0.0.1:11215 - [foo, answer]
+	// gomemcached: MultiGet 127.0.0.2:11215 - [gopher]
 	_, err = mcl.MultiGet(ctx, maps.Keys(items))
 	mustInit(err)
 
