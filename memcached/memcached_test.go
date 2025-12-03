@@ -903,7 +903,9 @@ func TestClient_CloseAvailableConnsInAllShardPools(t *testing.T) {
 	addr, err := utils.AddrRepr(localhostTCPAddr)
 	assert.Nilf(t, err, "AddrRepr: %v", err)
 
-	p, ok := mc.safeGetFreeConn(addr)
+	mc.fmu.RLock()
+	p, ok := mc.freeConns[addr.String()]
+	mc.fmu.RUnlock()
 	assert.Truef(t, ok, "Get from freeConns not found pool for %s", addr.String())
 
 	l := p.Len()

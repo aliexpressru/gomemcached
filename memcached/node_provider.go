@@ -72,6 +72,7 @@ func (c *Client) checkNodesHealth(ctx context.Context) {
 			c.safeAddToDeadNodes(sNode)
 		} else {
 			c.safeRemoveFromDeadNodes(sNode)
+			logger.Warnf(ctx, "%s: Recovered node - %s", libPrefix, sNode)
 		}
 	}
 

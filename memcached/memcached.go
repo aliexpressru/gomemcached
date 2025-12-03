@@ -237,7 +237,10 @@ func (cn *conn) release() {
 }
 
 func (cn *conn) close() {
-	if p, ok := cn.c.safeGetFreeConn(cn.addr); ok {
+	cn.c.fmu.RLock()
+	defer cn.c.fmu.RUnlock()
+
+	if p, ok := cn.c.freeConns[cn.addr.String()]; ok {
 		p.Close(cn)
 	} else {
 		_ = cn.rc.Close()
@@ -259,13 +262,6 @@ func (cn *conn) condRelease(err *error) {
 
 func (c *Client) getOpaque() uint32 {
 	return atomic.AddUint32(c.opaque, uint32(1))
-}
-
-func (c *Client) safeGetFreeConn(addr net.Addr) (*pool.Pool, bool) {
-	c.fmu.RLock()
-	defer c.fmu.RUnlock()
-	connPool, ok := c.freeConns[addr.String()]
-	return connPool, ok
 }
 
 func (c *Client) safeGetOrInitFreeConn(addr net.Addr) *pool.Pool {
@@ -314,7 +310,9 @@ func (c *Client) freeConnsIsNil() bool {
 }
 
 func (c *Client) putFreeConn(cn *conn) {
-	connPool, ok := c.safeGetFreeConn(cn.addr)
+	c.fmu.RLock()
+	defer c.fmu.RUnlock()
+	connPool, ok := c.freeConns[cn.addr.String()]
 	if ok {
 		connPool.Put(cn)
 	} else {
@@ -348,10 +346,11 @@ func (c *Client) removeFromFreeConns(addr net.Addr) {
 	if c.freeConnsIsNil() {
 		return
 	}
-	connPool, ok := c.safeGetFreeConn(addr)
 
 	c.fmu.Lock()
 	defer c.fmu.Unlock()
+
+	connPool, ok := c.freeConns[addr.String()]
 	if ok {
 		connPool.Destroy()
 	}
