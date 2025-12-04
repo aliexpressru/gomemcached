@@ -44,8 +44,8 @@ func isFatal(e error) bool {
 	return true
 }
 
-// Size is a number of bytes this response consumes on the wire.
-func (r *Response) Size() int {
+// size is a number of bytes this response consumes on the wire.
+func (r *Response) size() int {
 	return HDR_LEN + len(r.Extras) + len(r.Key) + len(r.Body)
 }
 
@@ -110,8 +110,8 @@ func (r *Response) fillHeaderBytes(data []byte) int {
 	return pos
 }
 
-// HeaderBytes get just the header bytes for this response.
-func (r *Response) HeaderBytes() []byte {
+// headerBytes get just the header bytes for this response.
+func (r *Response) headerBytes() []byte {
 	data := make([]byte, HDR_LEN+len(r.Extras)+len(r.Key))
 
 	r.fillHeaderBytes(data)
@@ -119,9 +119,9 @@ func (r *Response) HeaderBytes() []byte {
 	return data
 }
 
-// Bytes the actual bytes transmitted for this response.
-func (r *Response) Bytes() []byte {
-	data := make([]byte, r.Size())
+// bytes the actual bytes transmitted for this response.
+func (r *Response) bytes() []byte {
+	data := make([]byte, r.size())
 
 	pos := r.fillHeaderBytes(data)
 
@@ -130,12 +130,12 @@ func (r *Response) Bytes() []byte {
 	return data
 }
 
-// Transmit send this response message across a writer.
-func (r *Response) Transmit(w io.Writer) (n int, err error) {
+// transmit send this response message across a writer.
+func (r *Response) transmit(w io.Writer) (n int, err error) {
 	if len(r.Body) < BODY_LEN {
-		n, err = w.Write(r.Bytes())
+		n, err = w.Write(r.bytes())
 	} else {
-		n, err = w.Write(r.HeaderBytes())
+		n, err = w.Write(r.headerBytes())
 		if err == nil {
 			m := 0
 			m, err = w.Write(r.Body)
@@ -145,8 +145,8 @@ func (r *Response) Transmit(w io.Writer) (n int, err error) {
 	return
 }
 
-// Receive - fill this Response with the data from this reader.
-func (r *Response) Receive(rd io.Reader, hdrBytes []byte) (int, error) {
+// receive - fill this Response with the data from this reader.
+func (r *Response) receive(rd io.Reader, hdrBytes []byte) (int, error) {
 	/*
 	   Byte/     0       |       1       |       2       |       3       |
 	      /              |               |               |               |
@@ -176,7 +176,7 @@ func (r *Response) Receive(rd io.Reader, hdrBytes []byte) (int, error) {
 	}
 
 	if hdrBytes[0] != RES_MAGIC && hdrBytes[0] != REQ_MAGIC {
-		return n, fmt.Errorf("Bad magic: 0x%02x", hdrBytes[0])
+		return n, fmt.Errorf("bad magic: 0x%02x", hdrBytes[0])
 	}
 
 	klen := int(binary.BigEndian.Uint16(hdrBytes[2:4]))

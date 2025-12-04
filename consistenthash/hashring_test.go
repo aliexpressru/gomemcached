@@ -194,6 +194,64 @@ func Test_innerRepr(t *testing.T) {
 	}
 }
 
+func TestHashRingGetEmptyNodes(t *testing.T) {
+	h := &HashRing{
+		hashFunc: func(data []byte) uint64 { return 0 },
+		replicas: 1,
+		keys:     []uint64{0},
+		ring:     map[uint64][]any{0: {}},
+		nodes:    map[string]struct{}{},
+	}
+
+	v, ok := h.Get("test")
+	if ok || v != nil {
+		t.Errorf("Expected nil,false but got %v,%v", v, ok)
+	}
+}
+
+func TestHashRingGetMultipleNodes(t *testing.T) {
+	h := &HashRing{
+		hashFunc: func(data []byte) uint64 { return uint64(len(data)) },
+		replicas: 1,
+		keys:     []uint64{3},
+		ring: map[uint64][]any{
+			3: {"node1", "node2", "node3"},
+		},
+		nodes: map[string]struct{}{},
+	}
+
+	v, ok := h.Get("abc")
+	if !ok {
+		t.Errorf("Expected node, got not ok")
+	}
+	if v != "node1" && v != "node2" && v != "node3" {
+		t.Errorf("Unexpected node returned: %v", v)
+	}
+}
+
+func TestHashRingRemovePartialNodes(t *testing.T) {
+	hashFunc := func(data []byte) uint64 { return 42 }
+
+	h := &HashRing{
+		hashFunc: hashFunc,
+		replicas: 1,
+		keys:     []uint64{42},
+		ring: map[uint64][]any{
+			42: {"node1", "node2"},
+		},
+		nodes: map[string]struct{}{
+			"node1": {},
+			"node2": {},
+		},
+	}
+
+	h.Remove("node1")
+
+	if nodes, ok := h.ring[42]; !ok || len(nodes) != 1 || nodes[0] != "node2" {
+		t.Errorf("Expected node2 to remain, got: %+v", nodes)
+	}
+}
+
 func getKeysBeforeAndAfterFailure(t *testing.T, prefix string, index int) (map[int]string, map[int]string) {
 	ch := NewHashRing()
 	for i := 0; i < keySize; i++ {

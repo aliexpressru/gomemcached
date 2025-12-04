@@ -1,6 +1,7 @@
 package memcached
 
 import (
+	"context"
 	"errors"
 	"net"
 	"slices"
@@ -14,7 +15,7 @@ import (
 	"github.com/aliexpressru/gomemcached/utils"
 )
 
-func (c *Client) initNodesProvider() {
+func (c *Client) initNodesProvider(ctx context.Context) {
 	var (
 		periodHC = c.getHCPeriod()
 		tHC      = time.NewTimer(periodHC)
@@ -31,9 +32,9 @@ func (c *Client) initNodesProvider() {
 		for {
 			select {
 			case <-tHC.C:
-				c.checkNodesHealth()
+				c.checkNodesHealth(ctx)
 				tHC.Reset(periodHC)
-			case <-c.ctx.Done():
+			case <-ctx.Done():
 				tHC.Stop()
 				return
 			}
@@ -43,9 +44,9 @@ func (c *Client) initNodesProvider() {
 		for {
 			select {
 			case <-tRB.C:
-				c.rebuildNodes()
+				c.rebuildNodes(ctx)
 				tRB.Reset(periodRB)
-			case <-c.ctx.Done():
+			case <-ctx.Done():
 				tRB.Stop()
 				return
 			}
@@ -53,10 +54,10 @@ func (c *Client) initNodesProvider() {
 	}()
 }
 
-func (c *Client) checkNodesHealth() {
+func (c *Client) checkNodesHealth(ctx context.Context) {
 	currentNodes, err := getNodes(c.nw.lookupHost, c.cfg)
 	if err != nil {
-		logger.Warnf("%s: Error occurred while checking nodes health, getNodes error - %s", libPrefix, err.Error())
+		logger.Warnf(ctx, "%s: Error occurred while checking nodes health, getNodes error - %s", libPrefix, err.Error())
 		return
 	}
 
@@ -67,10 +68,11 @@ func (c *Client) checkNodesHealth() {
 			return
 		}
 
-		if c.nodeIsDead(node) {
+		if c.nodeIsDead(ctx, node) {
 			c.safeAddToDeadNodes(sNode)
 		} else {
 			c.safeRemoveFromDeadNodes(sNode)
+			logger.Warnf(ctx, "%s: Recovered node - %s", libPrefix, sNode)
 		}
 	}
 
@@ -93,7 +95,7 @@ func (c *Client) checkNodesHealth() {
 		wg.Add(1)
 		go func(n any) {
 			defer wg.Done()
-			if c.nodeIsDead(n) {
+			if c.nodeIsDead(ctx, n) {
 				sNode := utils.Repr(n)
 				c.safeAddToDeadNodes(sNode)
 			}
@@ -106,7 +108,7 @@ func (c *Client) checkNodesHealth() {
 	if len(deadNodes) != 0 {
 		nodes := maps.Keys(deadNodes)
 
-		logger.Warnf("%s: Dead nodes - %s", libPrefix, nodes)
+		logger.Warnf(ctx, "%s: Dead nodes - %s", libPrefix, nodes)
 
 		for _, node := range nodes {
 			addr, cErr := utils.AddrRepr(node)
@@ -119,10 +121,10 @@ func (c *Client) checkNodesHealth() {
 	}
 }
 
-func (c *Client) rebuildNodes() {
+func (c *Client) rebuildNodes(ctx context.Context) {
 	currentNodes, err := getNodes(c.nw.lookupHost, c.cfg)
 	if err != nil {
-		logger.Warnf("%s: Error occurred while rebuild nodes health, getNodes error - %s", libPrefix, err.Error())
+		logger.Warnf(ctx, "%s: Error occurred while rebuild nodes health, getNodes error - %s", libPrefix, err.Error())
 		return
 	}
 	slices.Sort(currentNodes)
@@ -131,20 +133,23 @@ func (c *Client) rebuildNodes() {
 		currentNodes = slices.DeleteFunc(currentNodes, func(a string) bool { return a == node })
 	}
 
-	var nodesInRing []string
-	for _, node := range c.hr.GetAllNodes() {
-		nodesInRing = append(nodesInRing, utils.Repr(node))
+	var (
+		allNodes    = c.hr.GetAllNodes()
+		nodesInRing = make([]string, len(allNodes))
+	)
+	for i := range allNodes {
+		nodesInRing[i] = utils.Repr(allNodes[i])
 	}
 	slices.Sort(nodesInRing)
 
-	var nodesToAdd []string
+	nodesToAdd := make([]string, 0, len(currentNodes))
 	for _, node := range currentNodes {
 		if _, ok := slices.BinarySearch(nodesInRing, node); !ok {
 			nodesToAdd = append(nodesToAdd, node)
 		}
 	}
 
-	var nodesToRemove []string
+	nodesToRemove := make([]string, 0, len(nodesInRing))
 	for _, node := range nodesInRing {
 		if _, ok := slices.BinarySearch(currentNodes, node); !ok {
 			nodesToRemove = append(nodesToRemove, node)
@@ -172,11 +177,16 @@ func (c *Client) rebuildNodes() {
 	}
 
 	if !c.disableRefreshConns {
-		_ = c.CloseAvailableConnsInAllShardPools(DefaultOfNumberConnsToDestroyPerRBPeriod)
+		_, err = c.CloseAvailableConnsInAllShardPools(ctx, DefaultOfNumberConnsToDestroyPerRBPeriod)
+		if err != nil {
+			logger.Warnf(ctx, "%s: Error occurred while draining connections, CloseAvailableConnsInAllShardPools error - %s",
+				libPrefix, err.Error(),
+			)
+		}
 	}
 }
 
-func (c *Client) nodeIsDead(node any) bool {
+func (c *Client) nodeIsDead(ctx context.Context, node any) bool {
 	addr, err := utils.AddrRepr(utils.Repr(node))
 	if err != nil {
 		return true
@@ -196,14 +206,13 @@ func (c *Client) nodeIsDead(node any) bool {
 					countRetry++
 					continue
 				}
-				logger.Errorf("%s. Node health check failed. error - %s, with timeout - %d",
+				logger.Errorf(ctx, "%s. Node health check failed. error - %s, with timeout - %s",
 					ErrServerError.Error(), err.Error(), c.netTimeout(),
 				)
 				return true
-			} else {
-				logger.Errorf("%s. %s", ErrServerError.Error(), err.Error())
-				return true
 			}
+			logger.Errorf(ctx, "%s. %s", ErrServerError.Error(), err.Error())
+			return true
 		}
 		_ = cn.Close()
 		break

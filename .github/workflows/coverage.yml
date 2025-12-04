@@ -10,14 +10,33 @@ jobs:
     permissions:
       contents: write
     services:
-      memcached:
-        image: memcached:latest
+      memcached_1:
+        image: bitnamilegacy/memcached:1.6.9
         ports:
           - 11211:11211
+      memcached_2:
+        image: bitnamilegacy/memcached:1.6.9
+        ports:
+          - 11212:11211
+      memcached_3:
+        image: bitnamilegacy/memcached:1.6.9
+        ports:
+          - 11213:11211
+      memcached_4:
+        image: bitnamilegacy/memcached:1.6.9
+        ports:
+          - 11214:11211
+      memcached_auth:
+        image: bitnamilegacy/memcached:1.6.9
+        ports:
+          - 11215:11211
+        env:
+          MEMCACHED_USERNAME: admin
+          MEMCACHED_PASSWORD: secret
     strategy:
       matrix:
         os: [ ubuntu-latest  ]
-        go: [ 1.21.x ]
+        go: [ 1.24.x ]
     steps:
       - uses: actions/checkout@v4
 
@@ -28,15 +47,16 @@ jobs:
 
       - name: Test
         run: |
-          go test -v -cover ./... -coverprofile coverage.out
+          go test -v -cover ./... -coverprofile coverage.out -coverpkg=./memcached,./pool,./consistenthash,./utils
           go tool cover -func coverage.out -o coverage.out 
 
-      - name: Go Coverage Badge
-        uses: tj-actions/coverage-badge-go@v1
-        if: ${{ runner.os == 'linux' }}
-        with:
-          green: 80
-          filename: coverage.out
+      - name: Install gobadge
+        run: go install github.com/AlexBeauchemin/gobadge@latest
+        if: ${{ runner.os == 'Linux' }}
+
+      - name: Generate coverage badge
+        run: gobadge -filename=coverage.out -green=80
+        if: ${{ runner.os == 'Linux' }}
 
       - uses: stefanzweifel/git-auto-commit-action@v5
         id: auto-commit-action

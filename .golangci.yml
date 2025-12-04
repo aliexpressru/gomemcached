@@ -1,35 +1,49 @@
-# More info on config here: https://github.com/golangci/golangci-lint#config-file
+version: "2"
 run:
-  deadline: 60s
   issues-exit-code: 1
   tests: true
-
-output:
-  format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
-
-linters-settings:
-  govet:
-    check-shadowing: true
-  golint:
-    min-confidence: 0
-  dupl:
-    threshold: 100
-  goconst:
-    min-len: 2
-    min-occurrences: 2
-
 linters:
-  disable-all: true
+  default: none
   enable:
-    - govet
-    - gosimple
+    - asasalint
+    - contextcheck
+    - copyloopvar
+    - dupl
     - errcheck
-    - ineffassign
-    - typecheck
     - goconst
-    - gosec
+    - gocritic
+    - govet
+    - ineffassign
+    - ireturn
+    - maintidx
+    - nilerr
     - nilnil
-    - goimports
-    - megacheck
+    - prealloc
+    - reassign
+    - staticcheck
+    - unused
+  settings:
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+    gocritic:
+      disabled-checks:
+        - singleCaseSwitch
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

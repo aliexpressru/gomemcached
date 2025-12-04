@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"reflect"
 	"testing"
 )
@@ -20,7 +20,7 @@ func TestEncodingResponse(t *testing.T) {
 		Body:   []byte("somevalue"),
 	}
 
-	got := req.Bytes()
+	got := req.bytes()
 
 	expected := []byte{
 		RES_MAGIC, byte(SET),
@@ -35,7 +35,7 @@ func TestEncodingResponse(t *testing.T) {
 		's', 'o', 'm', 'e', 'v', 'a', 'l', 'u', 'e',
 	}
 
-	if len(got) != req.Size() {
+	if len(got) != req.size() {
 		t.Fatalf("Expected %v bytes, got %v", got,
 			len(got))
 	}
@@ -68,7 +68,7 @@ func TestEncodingResponseWithExtras(t *testing.T) {
 	}
 
 	buf := &bytes.Buffer{}
-	res.Transmit(buf)
+	res.transmit(buf)
 	got := buf.Bytes()
 
 	expected := []byte{
@@ -85,7 +85,7 @@ func TestEncodingResponseWithExtras(t *testing.T) {
 		's', 'o', 'm', 'e', 'v', 'a', 'l', 'u', 'e',
 	}
 
-	if len(got) != res.Size() {
+	if len(got) != res.size() {
 		t.Fatalf("Expected %v bytes, got %v", got,
 			len(got))
 	}
@@ -104,11 +104,11 @@ func TestEncodingResponseWithLargeBody(t *testing.T) {
 		Cas:    938424885,
 		Extras: []byte{1, 2, 3, 4},
 		Key:    []byte("somekey"),
-		Body:   make([]byte, 256),
+		Body:   make([]byte, BUF_LEN),
 	}
 
 	buf := &bytes.Buffer{}
-	res.Transmit(buf)
+	res.transmit(buf)
 	got := buf.Bytes()
 
 	expected := append([]byte{
@@ -122,9 +122,9 @@ func TestEncodingResponseWithLargeBody(t *testing.T) {
 		0x0, 0x0, 0x0, 0x0, 0x37, 0xef, 0x3a, 0x35, // CAS
 		1, 2, 3, 4, // extras
 		's', 'o', 'm', 'e', 'k', 'e', 'y',
-	}, make([]byte, 256)...)
+	}, make([]byte, BUF_LEN)...)
 
-	if len(got) != res.Size() {
+	if len(got) != res.size() {
 		t.Fatalf("Expected %v bytes, got %v", got,
 			len(got))
 	}
@@ -146,10 +146,10 @@ func BenchmarkEncodingResponse(b *testing.B) {
 		Body:   []byte("somevalue"),
 	}
 
-	b.SetBytes(int64(req.Size()))
+	b.SetBytes(int64(req.size()))
 
 	for i := 0; i < b.N; i++ {
-		req.Bytes()
+		req.bytes()
 	}
 }
 
@@ -164,10 +164,10 @@ func BenchmarkEncodingResponseLarge(b *testing.B) {
 		Body:   make([]byte, 24*1024),
 	}
 
-	b.SetBytes(int64(req.Size()))
+	b.SetBytes(int64(req.size()))
 
 	for i := 0; i < b.N; i++ {
-		req.Bytes()
+		req.bytes()
 	}
 }
 
@@ -211,13 +211,13 @@ func TestIsFatal(t *testing.T) {
 
 func TestResponseTransmit(t *testing.T) {
 	res := Response{Key: []byte("thekey")}
-	_, err := res.Transmit(ioutil.Discard)
+	_, err := res.transmit(io.Discard)
 	if err != nil {
 		t.Errorf("Error sending small response: %v", err)
 	}
 
-	res.Body = make([]byte, 256)
-	_, err = res.Transmit(ioutil.Discard)
+	res.Body = make([]byte, BUF_LEN)
+	_, err = res.transmit(io.Discard)
 	if err != nil {
 		t.Errorf("Error sending large response thing: %v", err)
 	}
@@ -233,10 +233,10 @@ func TestReceiveResponse(t *testing.T) {
 		Body:   []byte("somevalue"),
 	}
 
-	data := res.Bytes()
+	data := res.bytes()
 
 	res2 := Response{}
-	_, err := res2.Receive(bytes.NewReader(data), nil)
+	_, err := res2.receive(bytes.NewReader(data), nil)
 	if err != nil {
 		t.Fatalf("Error receiving: %v", err)
 	}
@@ -256,11 +256,11 @@ func TestReceiveResponseBadMagic(t *testing.T) {
 		Body:   []byte("somevalue"),
 	}
 
-	data := res.Bytes()
+	data := res.bytes()
 	data[0] = 0x13
 
 	res2 := Response{}
-	_, err := res2.Receive(bytes.NewReader(data), nil)
+	_, err := res2.receive(bytes.NewReader(data), nil)
 	if err == nil {
 		t.Fatalf("Expected error, got: %#v", res2)
 	}
@@ -276,11 +276,11 @@ func TestReceiveResponseShortHeader(t *testing.T) {
 		Body:   []byte("somevalue"),
 	}
 
-	data := res.Bytes()
+	data := res.bytes()
 	data[0] = 0x13
 
 	res2 := Response{}
-	_, err := res2.Receive(bytes.NewReader(data[:13]), nil)
+	_, err := res2.receive(bytes.NewReader(data[:13]), nil)
 	if err == nil {
 		t.Fatalf("Expected error, got: %#v", res2)
 	}
@@ -296,11 +296,11 @@ func TestReceiveResponseShortBody(t *testing.T) {
 		Body:   []byte("somevalue"),
 	}
 
-	data := res.Bytes()
+	data := res.bytes()
 	data[0] = 0x13
 
 	res2 := Response{}
-	_, err := res2.Receive(bytes.NewReader(data[:len(data)-3]), nil)
+	_, err := res2.receive(bytes.NewReader(data[:len(data)-3]), nil)
 	if err == nil {
 		t.Fatalf("Expected error, got: %#v", res2)
 	}
@@ -316,11 +316,11 @@ func TestReceiveResponseWithBuffer(t *testing.T) {
 		Body:   []byte("somevalue"),
 	}
 
-	data := res.Bytes()
+	data := res.bytes()
 
 	res2 := Response{}
 	buf := make([]byte, HDR_LEN)
-	_, err := res2.Receive(bytes.NewReader(data), buf)
+	_, err := res2.receive(bytes.NewReader(data), buf)
 	if err != nil {
 		t.Fatalf("Error receiving: %v", err)
 	}
@@ -337,10 +337,10 @@ func TestReceiveResponseNoContent(t *testing.T) {
 		Opaque: 7242,
 	}
 
-	data := res.Bytes()
+	data := res.bytes()
 
 	res2 := Response{}
-	_, err := res2.Receive(bytes.NewReader(data), nil)
+	_, err := res2.receive(bytes.NewReader(data), nil)
 	if err != nil {
 		t.Fatalf("Error receiving: %v", err)
 	}
@@ -363,7 +363,7 @@ func BenchmarkReceiveResponse(b *testing.B) {
 		Body:   []byte("somevalue"),
 	}
 
-	data := req.Bytes()
+	data := req.bytes()
 	rdr := bytes.NewReader(data)
 
 	b.SetBytes(int64(len(data)))
@@ -373,7 +373,7 @@ func BenchmarkReceiveResponse(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		res2 := Response{}
 		rdr.Seek(0, 0)
-		res2.Receive(rdr, buf)
+		res2.receive(rdr, buf)
 	}
 }
 
@@ -388,7 +388,7 @@ func BenchmarkReceiveResponseNoBuf(b *testing.B) {
 		Body:   []byte("somevalue"),
 	}
 
-	data := req.Bytes()
+	data := req.bytes()
 	rdr := bytes.NewReader(data)
 
 	b.SetBytes(int64(len(data)))
@@ -397,7 +397,7 @@ func BenchmarkReceiveResponseNoBuf(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		res2 := Response{}
 		rdr.Seek(0, 0)
-		res2.Receive(rdr, nil)
+		res2.receive(rdr, nil)
 	}
 }
 
